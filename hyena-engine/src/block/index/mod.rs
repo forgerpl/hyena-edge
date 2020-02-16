@@ -14,33 +14,25 @@ where
     type LookupIter: Iterator<Item = bool> + 'si;
     type FilterValue: PartialEq + Copy + Clone + Debug + 'si;
 
-    #[inline]
     fn index_encode_value(value: T) -> Self::FilterValue;
 
-    #[inline]
     fn index_append_encoded(&mut self, value: Self::FilterValue);
 
-    #[inline]
     fn index_lookup_encoded(&self, rowid: RowId, value: Self::FilterValue) -> bool;
 
-    #[inline]
     fn index_lookup_encoded_iter(&'si self, value: Self::FilterValue) -> Self::LookupIter;
 
-    #[inline]
     fn index_iter(&'si self) -> Self::Iter;
 
     // todo: change to Result
-    #[inline]
     fn index_append_value(&mut self, value: T) {
         self.index_append_encoded(Self::index_encode_value(value))
     }
 
-    #[inline]
     fn index_lookup_value(&self, rowid: RowId, value: T) -> bool {
         self.index_lookup_encoded(rowid, Self::index_encode_value(value))
     }
 
-    #[inline]
     fn index_lookup_value_iter(&'si self, value: T) -> Self::LookupIter {
         self.index_lookup_encoded_iter(Self::index_encode_value(value))
     }

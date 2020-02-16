@@ -452,12 +452,10 @@ impl From<(ScanResult, StreamState)> for ScanResult {
 }
 
 pub trait ScanFilterApply<T> {
-    #[inline]
     fn apply(&self, tested: &T) -> bool;
 }
 
 pub(crate) trait ScanFilterBloom {
-    #[inline]
     fn bloom_value(&self) -> Option<BloomValue> {
         None
     }

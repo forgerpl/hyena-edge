@@ -1,10 +1,10 @@
 use chrono::prelude::*;
-use std::fmt::{Display, Error as FmtError, Formatter};
-use std::ops::Deref;
 use num::{NumCast, One, ToPrimitive, Zero};
-use std::ops::{Add, Mul};
-use std::i64;
 use rand::{Rand, Rng};
+use std::fmt::{Display, Error as FmtError, Formatter};
+use std::i64;
+use std::ops::Deref;
+use std::ops::{Add, Mul};
 
 pub const MIN_TIMESTAMP_VALUE: u64 = 1_u64;
 pub const MAX_TIMESTAMP_VALUE: u64 = 8_210_298_326_400_000_000_u64;

@@ -1,9 +1,8 @@
-use error::*;
-use std::path::{Path, PathBuf};
-use hyena_common::ty::Timestamp;
-use fs::ensure_dir;
+use crate::error::*;
+use crate::fs::ensure_dir;
 use chrono::prelude::*;
-
+use hyena_common::ty::Timestamp;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RootManager {
@@ -13,8 +12,7 @@ pub(crate) struct RootManager {
 impl RootManager {
     #[allow(unused)]
     pub(crate) fn new<P: AsRef<Path>>(data_root: P) -> Result<RootManager> {
-        let data = ensure_dir(data_root)
-            .with_context(|_| "Failed to manage root directory")?;
+        let data = ensure_dir(data_root).with_context(|_| "Failed to manage root directory")?;
 
         Ok(RootManager { data })
     }
@@ -36,7 +34,6 @@ impl PartitionGroupManager {
         data_root: P,
         source_id: S,
     ) -> Result<PartitionGroupManager> {
-
         let root = ensure_dir(data_root)
             .with_context(|_| "Failed to manage partition group root directory")?;
 
@@ -70,9 +67,8 @@ impl PartitionManager {
         id: T,
         ts: TS,
     ) -> Result<PartitionManager> {
-
-        let root = ensure_dir(data_root)
-            .with_context(|_| "Failed to manage partition root directory")?;
+        let root =
+            ensure_dir(data_root).with_context(|_| "Failed to manage partition root directory")?;
 
         let ts: DateTime<Utc> = ts.into().into();
 
@@ -102,7 +98,6 @@ impl AsRef<Path> for PartitionManager {
 mod tests {
     use super::*;
     use uuid::Uuid;
-
 
     #[test]
     fn nonexistent() {
@@ -168,7 +163,8 @@ mod tests {
             .with_context(|_| "Failed to create manager")
             .unwrap();
 
-        let t = pman.as_ref()
+        let t = pman
+            .as_ref()
             .strip_prefix(root.as_ref())
             .with_context(|_| "Produced path is not a subdirectory of root")
             .unwrap()

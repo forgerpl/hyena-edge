@@ -6,8 +6,8 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 pub type UuidBytes = [u8; BUFFER_SIZE];
 const BUFFER_SIZE: usize = 16;
 
-use serde::ser::{Serialize, SerializeTuple, Serializer};
 use serde::de::{Deserialize, Deserializer};
+use serde::ser::{Serialize, SerializeTuple, Serializer};
 
 /// Uuid type for use in Hyena
 ///
@@ -16,8 +16,6 @@ use serde::de::{Deserialize, Deserializer};
 /// # Examples
 ///
 /// ```rust
-///
-/// extern crate hyena_common;
 ///
 /// use hyena_common::ty::Uuid;
 ///
@@ -30,8 +28,6 @@ use serde::de::{Deserialize, Deserializer};
 ///
 /// ```
 /// ```rust
-///
-/// extern crate hyena_common;
 ///
 /// use hyena_common::ty::{Uuid, UuidBytes};
 ///
@@ -171,7 +167,7 @@ mod tests {
 
     #[test]
     fn serialize() {
-        use serde_utils::serialize;
+        use crate::serde_utils::serialize;
 
         let uuid = Uuid::from(&TEST_BYTES);
 
@@ -182,7 +178,7 @@ mod tests {
 
     #[test]
     fn deserialize() {
-        use serde_utils::deserialize;
+        use crate::serde_utils::deserialize;
 
         let uuid = Uuid::from(&TEST_BYTES);
 

@@ -85,22 +85,22 @@
 //! +---------------+-----------+-------------+
 //! ```
 
-use error::*;
-use ty::ColumnId;
-use hyena_common::collections::{HashMap, HashSet};
-use std::fmt::{Display, Debug};
-use std::hash::Hash;
-use std::ops::Deref;
-use datastore::PartitionId;
-use params::SourceId;
-use ty::fragment::Fragment;
-use hyena_common::ty::Timestamp;
+use crate::datastore::PartitionId;
+use crate::error::*;
+use crate::params::SourceId;
+use crate::ty::fragment::Fragment;
+use crate::ty::ColumnId;
 use extprim::i128::i128;
 use extprim::u128::u128;
+use hyena_common::collections::{HashMap, HashSet};
+use hyena_common::ty::Timestamp;
 use rayon::prelude::*;
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
+use std::ops::Deref;
 
+use hyena_bloom_filter::{BloomValue, DefaultBloomFilter};
 pub use hyena_common::ty::Regex;
-use hyena_bloom_filter::{DefaultBloomFilter, BloomValue};
 
 pub type ScanFilters = OrScanFilters;
 pub type ScanData = HashMap<ColumnId, Option<Fragment>>;
@@ -117,15 +117,13 @@ pub struct StreamState {
 
 impl StreamState {
     pub fn new(skip_chunks: usize) -> StreamState {
-        StreamState {
-            skip_chunks,
-        }
+        StreamState { skip_chunks }
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StreamConfig {
-    pub(crate) row_limit: usize,   // TODO: use std::num::NonZeroUsize when stable
+    pub(crate) row_limit: usize, // TODO: use std::num::NonZeroUsize when stable
     pub(crate) threshold: usize,
 
     pub(crate) state: Option<StreamState>,
@@ -149,7 +147,7 @@ pub struct Scan {
     pub(crate) projection: Option<Vec<ColumnId>>,
     pub(crate) filters: Option<ScanFilters>,
     pub(crate) stream: Option<StreamConfig>,
-    pub(crate) bloom_filters: Option<BloomFilterValues>,    // OR/ANY
+    pub(crate) bloom_filters: Option<BloomFilterValues>, // OR/ANY
     pub(crate) or_clauses_count: usize,
 }
 
@@ -203,18 +201,25 @@ impl Scan {
     }
 
     pub(crate) fn count_or_clauses(filters: &ScanFilters) -> usize {
-        filters.iter().map(|(_, and_filters)| and_filters.len()).max().unwrap_or_default()
+        filters
+            .iter()
+            .map(|(_, and_filters)| and_filters.len())
+            .max()
+            .unwrap_or_default()
     }
 
     fn compute_bloom_values(filters: &ScanFilters) -> Option<BloomFilterValues> {
         filters
             .iter()
             .map(|(colid, and_filters)| {
-                (*colid, and_filters
-                    .iter()
-                    .flat_map(|v| v.iter())
-                    .map(|v| v.bloom_value().ok_or(()))
-                    .collect::<::std::result::Result<Vec<BloomValue>, ()>>())
+                (
+                    *colid,
+                    and_filters
+                        .iter()
+                        .flat_map(|v| v.iter())
+                        .map(|v| v.bloom_value().ok_or(()))
+                        .collect::<::std::result::Result<Vec<BloomValue>, ()>>(),
+                )
             })
             .map(|(colid, v)| v.map(|v| (colid, v)))
             .collect::<::std::result::Result<_, ()>>()
@@ -226,8 +231,8 @@ impl Scan {
 pub enum ScanTsRange {
     Full,
     Bounded { start: Timestamp, end: Timestamp }, // inclusive, exclusive
-    From { start: Timestamp },              // inclusive
-    To { end: Timestamp },                  // exclusive
+    From { start: Timestamp },                    // inclusive
+    To { end: Timestamp },                        // exclusive
 }
 
 impl ScanTsRange {
@@ -237,7 +242,9 @@ impl ScanTsRange {
 
     #[inline]
     pub fn overlaps_with<TS>(&self, min: TS, max: TS) -> bool
-    where Timestamp: From<TS> {
+    where
+        Timestamp: From<TS>,
+    {
         let min = Timestamp::from(min);
         let max = Timestamp::from(max);
 
@@ -245,8 +252,7 @@ impl ScanTsRange {
 
         match *self {
             ScanTsRange::Full => true,
-            ScanTsRange::Bounded { start, end }
-                if start <= max && min < end => true,
+            ScanTsRange::Bounded { start, end } if start <= max && min < end => true,
             ScanTsRange::From { start } if start <= max => true,
             ScanTsRange::To { end } if end > min => true,
             _ => false,
@@ -265,7 +271,6 @@ pub enum ScanFilterOp<T: Display + Debug + Clone + PartialEq + PartialOrd + Hash
     In(HashSet<T>),
 
     // String ops
-
     /// For String column, test if the haystack starts with the needle
     /// For other types, cast to String and then do the test, so potentially much slower
     /// as it needs to alloc
@@ -288,7 +293,6 @@ pub struct ScanResult {
 }
 
 impl ScanResult {
-
     /// Return merge identity for `ScanResult`
     ///
     /// According to Wikipedia:
@@ -339,7 +343,9 @@ impl ScanResult {
                 // TODO: this is bad, need to rethink how to approach this
                 error!("Streaming multiple partition groups, which is currently not supported!");
 
-                Err(err_msg("streaming multiple partition groups is currently not supported"))
+                Err(err_msg(
+                    "streaming multiple partition groups is currently not supported",
+                ))
             }
             (None, None) => Ok(()),
         }
@@ -348,25 +354,31 @@ impl ScanResult {
     pub fn len(&self) -> usize {
         self.try_dense_len()
             .or_else(|| {
-            // all sparse columns, and here if differs from dense_len
-            // as dense len finds the expected output fragment length
-            // and len() should give us a number of distinct rows
-            // this is very heavy operation, because we have to track
-            // all rows from all of the columns
+                // all sparse columns, and here if differs from dense_len
+                // as dense len finds the expected output fragment length
+                // and len() should give us a number of distinct rows
+                // this is very heavy operation, because we have to track
+                // all rows from all of the columns
 
-            Some(self.data
-                .par_iter()
-                .map(|(_, col)| {
-                    col.as_ref()
-                        // TODO: verify that FragmentIter's Value wrapping
-                        // gets optimized out by the compiler
-                        .map_or(hashset! { 0 },
-                            |col| col.iter().map(|(idx, _)| idx).collect::<HashSet<_>>())
-                })
-                .reduce(|| HashSet::new(), |a, b| a.union(&b).into_iter().cloned().collect())
-                .len())
-        })
-        .unwrap_or_default()
+                Some(
+                    self.data
+                        .par_iter()
+                        .map(|(_, col)| {
+                            col.as_ref()
+                                // TODO: verify that FragmentIter's Value wrapping
+                                // gets optimized out by the compiler
+                                .map_or(hashset! { 0 }, |col| {
+                                    col.iter().map(|(idx, _)| idx).collect::<HashSet<_>>()
+                                })
+                        })
+                        .reduce(
+                            || HashSet::new(),
+                            |a, b| a.union(&b).into_iter().cloned().collect(),
+                        )
+                        .len(),
+                )
+            })
+            .unwrap_or_default()
     }
 
     /// Get the length of a dense result `Fragment`
@@ -379,30 +391,32 @@ impl ScanResult {
 
         self.try_dense_len()
             .or_else(|| {
-            // all sparse columns, so we have to find the maximum index value
-            // which means iterating over all columns
+                // all sparse columns, so we have to find the maximum index value
+                // which means iterating over all columns
 
-            use std::cmp::max;
+                use std::cmp::max;
 
-            Some(self.data.iter().fold(0, |max_idx, (_, col)| {
-                // all columns have to be sparse here
-                // hence why only debug-time assert
-                debug_assert!(col.as_ref().map_or(true, |col| col.is_sparse()));
+                Some(self.data.iter().fold(0, |max_idx, (_, col)| {
+                    // all columns have to be sparse here
+                    // hence why only debug-time assert
+                    debug_assert!(col.as_ref().map_or(true, |col| col.is_sparse()));
 
-                // this is not a logic error, as this is used to determine
-                // the base offset for sparse index
-                // so zero in case of all empty Fragments is perfectly valid
-                max(max_idx,
-                    col.as_ref()
-                        .map_or(0, |col| col.max_index().unwrap_or(0)))
-            }))
-        })
-        .unwrap_or_default()
+                    // this is not a logic error, as this is used to determine
+                    // the base offset for sparse index
+                    // so zero in case of all empty Fragments is perfectly valid
+                    max(
+                        max_idx,
+                        col.as_ref().map_or(0, |col| col.max_index().unwrap_or(0)),
+                    )
+                }))
+            })
+            .unwrap_or_default()
     }
 
     #[inline]
     fn try_dense_len(&self) -> Option<usize> {
-        self.data.iter()
+        self.data
+            .iter()
             .find(|&(colidx, col)| {
                 // this is a very ugly hack
                 // that needs to be here until we get rid of source_id column
@@ -414,9 +428,7 @@ impl ScanResult {
                 // that gets to stay
                 col.as_ref().map_or(false, |col| !col.is_sparse())
             })
-            .map(|(_, dense)| {
-                dense.as_ref().map_or(0, |col| col.len())
-            })
+            .map(|(_, dense)| dense.as_ref().map_or(0, |col| col.len()))
     }
 
     pub fn stream_state_data(&self) -> Option<StreamState> {
@@ -452,12 +464,10 @@ impl From<(ScanResult, StreamState)> for ScanResult {
 }
 
 pub trait ScanFilterApply<T> {
-    #[inline]
     fn apply(&self, tested: &T) -> bool;
 }
 
 pub(crate) trait ScanFilterBloom {
-    #[inline]
     fn bloom_value(&self) -> Option<BloomValue> {
         None
     }
@@ -654,7 +664,6 @@ scan_filter_impl! { ops
     i128, I128, "I128",
 }
 
-
 // String
 
 impl ScanFilterOp<String> {
@@ -718,16 +727,17 @@ impl<'a> ScanFilterApply<&'a str> for ScanFilter {
             op.apply(*tested)
         } else {
             // fail hard in debug builds
-            debug_assert!(false,
+            debug_assert!(
+                false,
                 "Wrong scan filter variant for the column, expected {:?}, got String",
-                self.variant_name());
+                self.variant_name()
+            );
 
             error!("unable to apply filter op");
             false
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -745,7 +755,8 @@ mod tests {
 
         #[test]
         #[should_panic(
-            expected = "Wrong scan filter variant for the column, expected \"U8\" and got \"U16\"")]
+            expected = "Wrong scan filter variant for the column, expected \"U8\" and got \"U16\""
+        )]
         fn type_is_wrong() {
             let op = ScanFilter::U8(ScanFilterOp::Eq(10));
 
@@ -795,7 +806,6 @@ mod tests {
 
         #[test]
         fn some_a_some_b() {
-
             let (mut merged, b, expected) = prepare();
 
             merged.merge(b).with_context(|_| "merge failed").unwrap();
@@ -947,17 +957,20 @@ mod tests {
 
             #[inline]
             fn bounds_check<T>(start: T, end: T) -> bool
-            where Timestamp: From<T> {
+            where
+                Timestamp: From<T>,
+            {
                 let start = Timestamp::from(start);
                 let end = Timestamp::from(end);
 
                 overlaps_test(&ScanTsRange::Bounded { start, end })
             }
 
-
             #[inline]
             fn assert_bounds<T>(start: T, end: T, checks: bool)
-            where Timestamp: From<T> {
+            where
+                Timestamp: From<T>,
+            {
                 assert_eq!(bounds_check(start, end), checks);
             }
 
@@ -1072,7 +1085,12 @@ mod tests {
 
             #[test]
             fn from_left() {
-                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(8) }), true);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::From {
+                        start: Timestamp::from(8)
+                    }),
+                    true
+                );
             }
 
             //      |-------------|
@@ -1082,7 +1100,12 @@ mod tests {
 
             #[test]
             fn from_left_edge() {
-                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(10) }), true);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::From {
+                        start: Timestamp::from(10)
+                    }),
+                    true
+                );
             }
 
             //      |-------------|
@@ -1092,7 +1115,12 @@ mod tests {
 
             #[test]
             fn from_within() {
-                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(13) }), true);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::From {
+                        start: Timestamp::from(13)
+                    }),
+                    true
+                );
             }
 
             //      |-------------|
@@ -1102,7 +1130,12 @@ mod tests {
 
             #[test]
             fn from_right() {
-                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(18) }), false);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::From {
+                        start: Timestamp::from(18)
+                    }),
+                    false
+                );
             }
 
             //      |-------------|
@@ -1112,7 +1145,12 @@ mod tests {
 
             #[test]
             fn from_right_edge() {
-                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(17) }), true);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::From {
+                        start: Timestamp::from(17)
+                    }),
+                    true
+                );
             }
         }
 
@@ -1126,7 +1164,12 @@ mod tests {
 
             #[test]
             fn to_left() {
-                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(9) }), false);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::To {
+                        end: Timestamp::from(9)
+                    }),
+                    false
+                );
             }
 
             //      |-------------|
@@ -1136,7 +1179,12 @@ mod tests {
 
             #[test]
             fn to_left_edge() {
-                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(10) }), false);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::To {
+                        end: Timestamp::from(10)
+                    }),
+                    false
+                );
             }
 
             //      |-------------|
@@ -1146,7 +1194,12 @@ mod tests {
 
             #[test]
             fn to_within() {
-                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(13) }), true);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::To {
+                        end: Timestamp::from(13)
+                    }),
+                    true
+                );
             }
 
             //      |-------------|
@@ -1156,7 +1209,12 @@ mod tests {
 
             #[test]
             fn to_right() {
-                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(18) }), true);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::To {
+                        end: Timestamp::from(18)
+                    }),
+                    true
+                );
             }
 
             //      |-------------|
@@ -1166,7 +1224,12 @@ mod tests {
 
             #[test]
             fn to_right_edge() {
-                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(17) }), true);
+                assert_eq!(
+                    overlaps_test(&ScanTsRange::To {
+                        end: Timestamp::from(17)
+                    }),
+                    true
+                );
             }
         }
     }

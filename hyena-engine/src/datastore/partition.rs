@@ -1,22 +1,25 @@
-use error::*;
+use crate::error::*;
 use hyena_common::ty::Uuid;
 
-use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap,
-ColumnId, RowId, ColumnIndexMap, ColumnIndexStorage, ColumnIndexStorageMap};
-use hyena_common::ty::Timestamp;
-use std::path::{Path, PathBuf};
-use std::cmp::{max, min};
+use crate::block::{BlockData, BufferHead, SparseIndex};
+use crate::mutator::BlockRefData;
+use crate::params::{PARTITION_METADATA, TIMESTAMP_COLUMN};
+use crate::scanner::{
+    BloomFilterValues, Scan, ScanFilterApply, ScanFilters, ScanResult, ScanTsRange,
+};
+use crate::ty::fragment::{Fragment, TimestampFragmentRef};
+use crate::ty::{
+    BlockHeadMap, BlockHeads, BlockMap, BlockStorage, BlockStorageMap, ColumnId, ColumnIndexMap,
+    ColumnIndexStorage, ColumnIndexStorageMap, RowId,
+};
 use hyena_common::collections::{HashMap, HashSet};
+use hyena_common::ty::Timestamp;
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
-use params::{PARTITION_METADATA, TIMESTAMP_COLUMN};
-use std::sync::RwLock;
+use std::cmp::{max, min};
 use std::iter::FromIterator;
-use ty::fragment::{Fragment, TimestampFragmentRef};
-use mutator::BlockRefData;
-use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange, BloomFilterValues};
-
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 pub(crate) type PartitionId = Uuid;
 
@@ -102,16 +105,23 @@ impl<'part> Partition<'part> {
             .unwrap();
 
         // ts range update
-        let (ts_min, ts_max) =
-            self.compare_ts(frags.get(&TIMESTAMP_COLUMN).expect("assumed ts fragment not found"));
+        let (ts_min, ts_max) = self.compare_ts(
+            frags
+                .get(&TIMESTAMP_COLUMN)
+                .expect("assumed ts fragment not found"),
+        );
 
         let written = {
             let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
                 if let Some(block) = self.blocks.get(blk_idx) {
                     let idx = self.indexes.get(blk_idx);
 
-                    trace!("writing block {} with frag len {} {}",
-                        blk_idx, (*frag).len(), idx.map_or("", |_ | "and column index"));
+                    trace!(
+                        "writing block {} with frag len {} {}",
+                        blk_idx,
+                        (*frag).len(),
+                        idx.map_or("", |_| "and column index")
+                    );
                     Some((block, frags.get(blk_idx).unwrap(), idx))
                 } else {
                     None
@@ -120,7 +130,7 @@ impl<'part> Partition<'part> {
 
             let mut written: usize = 0;
 
-            for (ref mut block, ref data, mut colidx) in ops {
+            for (ref mut block, ref data, colidx) in ops {
                 let b = acquire!(write block);
                 let mut colidx = colidx.map(|ref mut lock| acquire!(raw write lock));
 
@@ -213,10 +223,8 @@ impl<'part> Partition<'part> {
         // full ts range
 
         let rowids = if let Some(ref filters) = scan.filters {
-            let rowids = self.filter(
-                filters,
-                scan.bloom_filters.as_ref(),
-                scan.or_clauses_count)?;
+            let rowids =
+                self.filter(filters, scan.bloom_filters.as_ref(), scan.or_clauses_count)?;
 
             // this is superfluous if we're dealing with dense blocks only
             // as it doesn't matter if rowids are sorted then
@@ -247,126 +255,133 @@ impl<'part> Partition<'part> {
     /// `HashSet` with matching `RowId`s
 
     #[inline]
-    fn filter(&self,
+    fn filter(
+        &self,
         filters: &ScanFilters,
         column_filters: Option<&BloomFilterValues>,
-        or_clauses_count: usize
+        or_clauses_count: usize,
     ) -> Result<HashSet<usize>> {
         let result = filters
             .par_iter()
-            .fold(|| vec![Some(HashSet::new()); or_clauses_count],
+            .fold(
+                || vec![Some(HashSet::new()); or_clauses_count],
                 |mut acc, (block_id, or_filters)| {
-                if let Some(block) = self.blocks.get(block_id) {
-                    let block = acquire!(read block);
-                    let index = self.indexes.get(block_id).map(|ref lock| acquire!(raw read lock));
+                    if let Some(block) = self.blocks.get(block_id) {
+                        let block = acquire!(read block);
+                        let index = self
+                            .indexes
+                            .get(block_id)
+                            .map(|ref lock| acquire!(raw read lock));
 
-                    map_block!(map block, blk, {
-                        blk.as_slice().iter()
-                            .enumerate()
-                            .for_each(|(rowid, val)| {
-                                or_filters
-                                    .iter()
-                                    .zip(acc.iter_mut())
-                                    .for_each(|(and_filters, result)| {
-                                        if let Some(ref mut result) = *result {
-                                            if and_filters.iter().all(|f| f.apply(val)) {
-                                                result.insert(rowid);
-                                            }
-                                        } else {
-                                            unreachable!()
-                                        }
-                                    });
-                            });
-
-                    }, {
-                        let (idx, data) = blk.as_indexed_slice();
-
-                        data.iter()
-                            .enumerate()
-                            .for_each(|(rowid, val)| {
-                                or_filters
-                                    .iter()
-                                    .zip(acc.iter_mut())
-                                    .for_each(|(and_filters, result)| {
-                                        if let Some(ref mut result) = *result {
-                                            if and_filters.iter().all(|f| f.apply(val)) {
-                                                // this is a safe cast u32 -> usize
-                                                result.insert(idx[rowid] as usize);
-                                            }
-                                        } else {
-                                            unreachable!()
-                                        }
-                                    });
-                            });
-                    }, {
-                        // pooled
-
-                        if let Some(ref index) = index {
-                            blk
-                                .iter()
+                        map_block!(map block, blk, {
+                            blk.as_slice().iter()
                                 .enumerate()
-                                .zip(index.iter())
-                                .filter_map(|((rowid, value), bloom)| {
-                                    // bloom
-
-                                    if let Some(filters) = column_filters {
-                                        if let Some(filters) = filters.get(&block_id) {
-                                            if filters
-                                                .iter()
-                                                .any(|tested| bloom.contains(*tested)) {
-                                                Some((rowid, value))
+                                .for_each(|(rowid, val)| {
+                                    or_filters
+                                        .iter()
+                                        .zip(acc.iter_mut())
+                                        .for_each(|(and_filters, result)| {
+                                            if let Some(ref mut result) = *result {
+                                                if and_filters.iter().all(|f| f.apply(val)) {
+                                                    result.insert(rowid);
+                                                }
                                             } else {
-                                                None
+                                                unreachable!()
+                                            }
+                                        });
+                                });
+
+                        }, {
+                            let (idx, data) = blk.as_indexed_slice();
+
+                            data.iter()
+                                .enumerate()
+                                .for_each(|(rowid, val)| {
+                                    or_filters
+                                        .iter()
+                                        .zip(acc.iter_mut())
+                                        .for_each(|(and_filters, result)| {
+                                            if let Some(ref mut result) = *result {
+                                                if and_filters.iter().all(|f| f.apply(val)) {
+                                                    // this is a safe cast u32 -> usize
+                                                    result.insert(idx[rowid] as usize);
+                                                }
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        });
+                                });
+                        }, {
+                            // pooled
+
+                            if let Some(ref index) = index {
+                                blk
+                                    .iter()
+                                    .enumerate()
+                                    .zip(index.iter())
+                                    .filter_map(|((rowid, value), bloom)| {
+                                        // bloom
+
+                                        if let Some(filters) = column_filters {
+                                            if let Some(filters) = filters.get(&block_id) {
+                                                if filters
+                                                    .iter()
+                                                    .any(|tested| bloom.contains(*tested)) {
+                                                    Some((rowid, value))
+                                                } else {
+                                                    None
+                                                }
+                                            } else {
+                                                Some((rowid, value))
                                             }
                                         } else {
                                             Some((rowid, value))
                                         }
-                                    } else {
-                                        Some((rowid, value))
-                                    }
-                                })
-                                .for_each(|(rowid, val)| {
-                                    or_filters
-                                        .iter()
-                                        .zip(acc.iter_mut())
-                                        .for_each(|(and_filters, result)| {
-                                            if let Some(ref mut result) = *result {
-                                                if and_filters.iter().all(|f| f.apply(&val)) {
-                                                    result.insert(rowid);
+                                    })
+                                    .for_each(|(rowid, val)| {
+                                        or_filters
+                                            .iter()
+                                            .zip(acc.iter_mut())
+                                            .for_each(|(and_filters, result)| {
+                                                if let Some(ref mut result) = *result {
+                                                    if and_filters.iter().all(|f| f.apply(&val)) {
+                                                        result.insert(rowid);
+                                                    }
+                                                } else {
+                                                    unreachable!()
                                                 }
-                                            } else {
-                                                unreachable!()
-                                            }
-                                        });
-                                });
-                        } else {
-                            blk
-                                .iter()
-                                .enumerate()
-                                .for_each(|(rowid, val)| {
-                                    or_filters
-                                        .iter()
-                                        .zip(acc.iter_mut())
-                                        .for_each(|(and_filters, result)| {
-                                            if let Some(ref mut result) = *result {
-                                                if and_filters.iter().all(|f| f.apply(&val)) {
-                                                    result.insert(rowid);
+                                            });
+                                    });
+                            } else {
+                                blk
+                                    .iter()
+                                    .enumerate()
+                                    .for_each(|(rowid, val)| {
+                                        or_filters
+                                            .iter()
+                                            .zip(acc.iter_mut())
+                                            .for_each(|(and_filters, result)| {
+                                                if let Some(ref mut result) = *result {
+                                                    if and_filters.iter().all(|f| f.apply(&val)) {
+                                                        result.insert(rowid);
+                                                    }
+                                                } else {
+                                                    unreachable!()
                                                 }
-                                            } else {
-                                                unreachable!()
-                                            }
-                                        });
-                                });
-                        }
-                    })
-                }
+                                            });
+                                    });
+                            }
+                        })
+                    }
 
-                acc
-            })
+                    acc
+                },
+            )
             .reduce(
                 || vec![None; or_clauses_count],
                 |a, b| {
-                    a.into_iter().zip(b.into_iter())
+                    a.into_iter()
+                        .zip(b.into_iter())
                         .map(|(a, b)| {
                             if a.is_none() {
                                 b
@@ -380,14 +395,13 @@ impl<'part> Partition<'part> {
                 },
             );
 
-            if result.iter().any(|result| result.is_none()) {
-                Err(err_msg("scan error: an empty filter variant was provided"))
-            } else {
-                Ok(result.into_iter()
-                    .fold(HashSet::new(), |a, b| {
-                        a.union(&b.unwrap()).cloned().collect()
-                    }))
-            }
+        if result.iter().any(|result| result.is_none()) {
+            Err(err_msg("scan error: an empty filter variant was provided"))
+        } else {
+            Ok(result.into_iter().fold(HashSet::new(), |a, b| {
+                a.union(&b.unwrap()).cloned().collect()
+            }))
+        }
     }
 
     /// Materialize scan results with given projection
@@ -403,9 +417,11 @@ impl<'part> Partition<'part> {
     /// `HashMap` with results placed in `Fragment`s
 
     #[inline]
-    fn materialize(&self, projection: &Option<Vec<ColumnId>>, rowids: Option<&[RowId]>)
-        -> Result<HashMap<ColumnId, Option<Fragment>>> {
-
+    fn materialize(
+        &self,
+        projection: &Option<Vec<ColumnId>>,
+        rowids: Option<&[RowId]>,
+    ) -> Result<HashMap<ColumnId, Option<Fragment>>> {
         let all_columns = if projection.is_some() {
             None
         } else {
@@ -416,146 +432,147 @@ impl<'part> Partition<'part> {
             projection.as_ref().unwrap()
         } else {
             all_columns.as_ref().unwrap()
-        }.par_iter()
-            .map(|block_id| {
-                if let Some(block) = self.blocks.get(block_id) {
-                    let block = acquire!(read block);
+        }
+        .par_iter()
+        .map(|block_id| {
+            if let Some(block) = self.blocks.get(block_id) {
+                let block = acquire!(read block);
 
-                    Ok((
-                        *block_id,
-                        Some(map_block!(map block, blk, {
+                Ok((
+                    *block_id,
+                    Some(map_block!(map block, blk, {
 
-                        let bs = blk.as_slice();
+                    let bs = blk.as_slice();
 
-                        Fragment::from(if bs.is_empty() {
+                    Fragment::from(if bs.is_empty() {
+                            Vec::new()
+                        } else {
+                            if let Some(rowids) = rowids {
+                                rowids.iter()
+                                    .map(|rowid| bs[*rowid])
+                                    .collect::<Vec<_>>()
+                            } else {
+                                // materialize full block
+
+                                bs.to_vec()
+                            }
+                        })
+                    }, {
+                        use crate::ty::{SparseIter, SparseIterator};
+
+                        let (index, data) = blk.as_indexed_slice();
+
+                        // map rowid (source block rowid) to target_rowid
+                        // (target block rowid), which is an index in the rowids vec
+                        // so essentially a rowid of the resulting rowset
+                        //
+                        // for a block defined like this:
+                        //
+                        // +--------+----+------+------+
+                        // | rowid  | ts | col1 | col2 |
+                        // +--------+----+------+------+
+                        // |   0    | 1  |      | 10   |
+                        // +--------+----+------+------+
+                        // |   1    | 2  | 1    | 20   |
+                        // +--------+----+------+------+
+                        // |   2    | 3  |      |      |
+                        // +--------+----+------+------+
+                        // |   3    | 4  | 2    |      |
+                        // +--------+----+------+------+
+                        // |   4    | 5  |      |      |
+                        // +--------+----+------+------+
+                        //
+                        // with rowids = [1, 2, 3] and all columns materialize
+                        //
+                        // we would get the result like this:
+                        // (origid included only to illustrate the transformation)
+                        //
+                        // +--------+--------+----+------+------+
+                        // | rowid  | origid | ts | col1 | col2 |
+                        // +--------+--------+----+------+------+
+                        // |   0    |   1    | 2  | 1    | 20   |
+                        // +--------+--------+----+------+------+
+                        // |   1    |   2    | 3  |      |      |
+                        // +--------+--------+----+------+------+
+                        // |   2    |   3    | 4  | 2    |      |
+                        // +--------+--------+----+------+------+
+                        //
+                        // which translates to the following for sparse col1:
+                        //
+                        // +--------+--------+------+
+                        // | rowid  | origid | col1 |
+                        // +--------+--------+------+
+                        // |   0    |   1    | 1    |
+                        // +--------+--------+------+
+                        // |   1    |   2    |      |
+                        // +--------+--------+------+
+                        // |   2    |   3    | 2    |
+                        // +--------+--------+------+
+                        //
+                        // (1, 0), (2, 2)
+                        //
+                        //
+                        // rowid is an index of an element in rowids slice
+                        // origid is a rowid from original data set
+                        // every matching sparse row will have its index replaced by new rowid
+                        // to properly translate to the result Fragment
+
+                        let mut iter = SparseIter::new(data, index.into_iter().cloned());
+
+                        let (d, i): (Vec<_>, Vec<SparseIndex>) = if let Some(rowids) = rowids {
+                            rowids
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(target_rowid, rowid)| {
+                                    // `as` shouldn't misbehave here, as we assume that
+                                    // both `rowid` and `target_rowid` are <= u32::MAX
+                                    // nevertheless it would be better to have this migrated to
+                                    // `TryFrom` as soon as it stabilizes
+
+                                    // using assert! here gives ~20%-30% performance decrease
+                                    debug_assert!(*rowid <= ::std::u32::MAX as usize);
+                                    debug_assert!(target_rowid <= ::std::u32::MAX as usize);
+
+                                    iter
+                                        .next_to(*rowid as SparseIndex)
+                                        .and_then(|v| v)
+                                        .map(|(v, _)| (*v, target_rowid as SparseIndex))
+                                })
+                                .unzip()
+                        } else {
+                            iter.unzip()
+                        };
+
+                        Fragment::from((d, i))
+                    }, {
+                        // pooled
+                        Fragment::from(if blk.is_empty() {
                                 Vec::new()
                             } else {
                                 if let Some(rowids) = rowids {
                                     rowids.iter()
-                                        .map(|rowid| bs[*rowid])
+                                        .map(|rowid| String::from(&blk[*rowid]))
                                         .collect::<Vec<_>>()
                                 } else {
                                     // materialize full block
 
-                                    bs.to_vec()
+                                    blk
+                                        .iter()
+                                        .map(String::from)
+                                        .collect::<Vec<_>>()
                                 }
                             })
-                        }, {
-                            use ty::{SparseIter, SparseIterator};
+                    })),
+                ))
+            } else {
+                // if this is a sparse block, then it's a valid case
+                // so we'll leave the decision whether scan failed or not here
+                // to our caller (who has access to the catalog)
 
-                            let (index, data) = blk.as_indexed_slice();
-
-                            // map rowid (source block rowid) to target_rowid
-                            // (target block rowid), which is an index in the rowids vec
-                            // so essentially a rowid of the resulting rowset
-                            //
-                            // for a block defined like this:
-                            //
-                            // +--------+----+------+------+
-                            // | rowid  | ts | col1 | col2 |
-                            // +--------+----+------+------+
-                            // |   0    | 1  |      | 10   |
-                            // +--------+----+------+------+
-                            // |   1    | 2  | 1    | 20   |
-                            // +--------+----+------+------+
-                            // |   2    | 3  |      |      |
-                            // +--------+----+------+------+
-                            // |   3    | 4  | 2    |      |
-                            // +--------+----+------+------+
-                            // |   4    | 5  |      |      |
-                            // +--------+----+------+------+
-                            //
-                            // with rowids = [1, 2, 3] and all columns materialize
-                            //
-                            // we would get the result like this:
-                            // (origid included only to illustrate the transformation)
-                            //
-                            // +--------+--------+----+------+------+
-                            // | rowid  | origid | ts | col1 | col2 |
-                            // +--------+--------+----+------+------+
-                            // |   0    |   1    | 2  | 1    | 20   |
-                            // +--------+--------+----+------+------+
-                            // |   1    |   2    | 3  |      |      |
-                            // +--------+--------+----+------+------+
-                            // |   2    |   3    | 4  | 2    |      |
-                            // +--------+--------+----+------+------+
-                            //
-                            // which translates to the following for sparse col1:
-                            //
-                            // +--------+--------+------+
-                            // | rowid  | origid | col1 |
-                            // +--------+--------+------+
-                            // |   0    |   1    | 1    |
-                            // +--------+--------+------+
-                            // |   1    |   2    |      |
-                            // +--------+--------+------+
-                            // |   2    |   3    | 2    |
-                            // +--------+--------+------+
-                            //
-                            // (1, 0), (2, 2)
-                            //
-                            //
-                            // rowid is an index of an element in rowids slice
-                            // origid is a rowid from original data set
-                            // every matching sparse row will have its index replaced by new rowid
-                            // to properly translate to the result Fragment
-
-                            let mut iter = SparseIter::new(data, index.into_iter().cloned());
-
-                            let (d, i): (Vec<_>, Vec<SparseIndex>) = if let Some(rowids) = rowids {
-                                rowids
-                                    .iter()
-                                    .enumerate()
-                                    .filter_map(|(target_rowid, rowid)| {
-                                        // `as` shouldn't misbehave here, as we assume that
-                                        // both `rowid` and `target_rowid` are <= u32::MAX
-                                        // nevertheless it would be better to have this migrated to
-                                        // `TryFrom` as soon as it stabilizes
-
-                                        // using assert! here gives ~20%-30% performance decrease
-                                        debug_assert!(*rowid <= ::std::u32::MAX as usize);
-                                        debug_assert!(target_rowid <= ::std::u32::MAX as usize);
-
-                                        iter
-                                            .next_to(*rowid as SparseIndex)
-                                            .and_then(|v| v)
-                                            .map(|(v, _)| (*v, target_rowid as SparseIndex))
-                                    })
-                                    .unzip()
-                            } else {
-                                iter.unzip()
-                            };
-
-                            Fragment::from((d, i))
-                        }, {
-                            // pooled
-                            Fragment::from(if blk.is_empty() {
-                                    Vec::new()
-                                } else {
-                                    if let Some(rowids) = rowids {
-                                        rowids.iter()
-                                            .map(|rowid| String::from(&blk[*rowid]))
-                                            .collect::<Vec<_>>()
-                                    } else {
-                                        // materialize full block
-
-                                        blk
-                                            .iter()
-                                            .map(String::from)
-                                            .collect::<Vec<_>>()
-                                    }
-                                })
-                        }))
-                    ))
-                } else {
-                    // if this is a sparse block, then it's a valid case
-                    // so we'll leave the decision whether scan failed or not here
-                    // to our caller (who has access to the catalog)
-
-                    Ok((*block_id, None))
-                }
-            })
-            .collect()
+                Ok((*block_id, None))
+            }
+        })
+        .collect()
     }
 
     #[inline]
@@ -564,10 +581,13 @@ impl<'part> Partition<'part> {
     }
 
     #[inline]
-    fn compare_ts<'frag, 'tsfrag, T>(&self, ts_frag: &'frag T)
-        -> (Option<Timestamp>, Option<Timestamp>)
-        where TimestampFragmentRef<'tsfrag>: From<&'frag T> {
-
+    fn compare_ts<'frag, 'tsfrag, T>(
+        &self,
+        ts_frag: &'frag T,
+    ) -> (Option<Timestamp>, Option<Timestamp>)
+    where
+        TimestampFragmentRef<'tsfrag>: From<&'frag T>,
+    {
         TimestampFragmentRef::from(ts_frag)
             .iter()
             .fold((None, None), |mut acc, ts| {
@@ -585,7 +605,8 @@ impl<'part> Partition<'part> {
 
     #[allow(unused)]
     pub(crate) fn scan_ts(&self) -> Result<(Timestamp, Timestamp)> {
-        let ts_block = self.blocks
+        let ts_block = self
+            .blocks
             .get(&0)
             .ok_or_else(|| err_msg("Failed to get timestamp block"))?;
 
@@ -641,15 +662,14 @@ impl<'part> Partition<'part> {
     pub(crate) fn update_meta(&mut self) -> Result<()> {
         // TODO: handle ts_min changes -> partition path
 
-        let (ts_min, ts_max) = self.scan_ts()
+        let (ts_min, ts_max) = self
+            .scan_ts()
             .with_context(|_| "Unable to perform ts scan for metadata update")?;
 
         if ts_min != self.ts_min {
             warn!(
                 "Partition min ts changed {} -> {} [{}]",
-                self.ts_min,
-                ts_min,
-                self.id
+                self.ts_min, ts_min, self.id
             );
         }
 
@@ -663,7 +683,8 @@ impl<'part> Partition<'part> {
     /// or return None, meaning that this partition doesn't contain any blocks
     /// in which case the caller should resort to `Catalog::space_for_blocks`
     pub(crate) fn space_for_blocks(&self, indices: &[ColumnId]) -> Option<usize> {
-        indices.iter()
+        indices
+            .iter()
             .filter_map(|block_id| {
                 if let Some(block) = self.blocks.get(block_id) {
                     let b = acquire!(read block);
@@ -696,7 +717,8 @@ impl<'part> Partition<'part> {
                     Some((*block_id, *block_type))
                 }
             })
-            .collect::<HashMap<_, _>>().into();
+            .collect::<HashMap<_, _>>()
+            .into();
 
         let blocks = Partition::prepare_blocks(&self.data_root, &fmap)
             .with_context(|_| "Unable to create block map")?;
@@ -717,7 +739,8 @@ impl<'part> Partition<'part> {
                     Some((*block_id, *index_type))
                 }
             })
-            .collect::<HashMap<_, _>>().into();
+            .collect::<HashMap<_, _>>()
+            .into();
 
         let blocks = Partition::prepare_indexes(&self.data_root, &fmap)
             .with_context(|_| "Unable to create block map")?;
@@ -733,21 +756,17 @@ impl<'part> Partition<'part> {
     }
 
     // TODO: to be benched
-    fn prepare_blocks<'i, P>(
-        root: P,
-        storage_map: &'i BlockStorageMap,
-    ) -> Result<BlockMap<'part>>
+    fn prepare_blocks<'i, P>(root: P, storage_map: &'i BlockStorageMap) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
-//         BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
-//         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
+        //         BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
+        //         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
     {
-
         storage_map
             .iter()
             .map(|(block_id, block_type)| match *block_type {
                 BlockStorage::Memory(bty) => {
-                    use ty::block::memory::Block;
+                    use crate::ty::block::memory::Block;
 
                     Block::create(bty)
                         .map(|block| (*block_id, locked!(rw block.into())))
@@ -755,7 +774,7 @@ impl<'part> Partition<'part> {
                         .map_err(|e| e.into())
                 }
                 BlockStorage::Memmap(bty) => {
-                    use ty::block::mmap::Block;
+                    use crate::ty::block::mmap::Block;
 
                     Block::create(&root, bty, *block_id)
                         .map(|block| (*block_id, locked!(rw block.into())))
@@ -773,15 +792,14 @@ impl<'part> Partition<'part> {
     ) -> Result<ColumnIndexMap<'part>>
     where
         P: AsRef<Path> + Sync,
-//         BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
-//         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
+        //         BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
+        //         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
     {
-
         storage_map
             .iter()
             .map(|(block_id, index_type)| match *index_type {
                 ColumnIndexStorage::Memory(colidx) => {
-                    use ty::index::memory::ColumnIndex;
+                    use crate::ty::index::memory::ColumnIndex;
 
                     ColumnIndex::create(colidx)
                         .map(|block| (*block_id, locked!(rw block.into())))
@@ -789,7 +807,7 @@ impl<'part> Partition<'part> {
                         .map_err(|e| e.into())
                 }
                 ColumnIndexStorage::Memmap(colidx) => {
-                    use ty::index::mmap::ColumnIndex;
+                    use crate::ty::index::mmap::ColumnIndex;
 
                     ColumnIndex::create(&root, colidx, *block_id)
                         .map(|block| (*block_id, locked!(rw block.into())))
@@ -819,11 +837,11 @@ impl<'part> Partition<'part> {
                 (
                     *blockid,
                     block_apply!(map physical block, blk, pb, {
-                    BlockHeads {
-                        head: pb.head(),
-                        pool_head: pb.pool_head(),
-                    }
-                }),
+                        BlockHeads {
+                            head: pb.head(),
+                            pool_head: pb.pool_head(),
+                        }
+                    }),
                 )
             })
             .collect::<BlockHeadMap>();
@@ -845,10 +863,12 @@ impl<'part> Partition<'part> {
             bail!("Cannot find partition metadata {:?}", meta);
         }
 
-        let (mut partition, blocks, indexes, heads):
-            (Partition, BlockStorageMap, ColumnIndexStorageMap,  BlockHeadMap) =
-            deserialize!(file meta)
-                .with_context(|_| "Failed to read partition metadata")?;
+        let (mut partition, blocks, indexes, heads): (
+            Partition,
+            BlockStorageMap,
+            ColumnIndexStorageMap,
+            BlockHeadMap,
+        ) = deserialize!(file meta).with_context(|_| "Failed to read partition metadata")?;
 
         partition.blocks = Partition::prepare_blocks(&root, &blocks)
             .with_context(|_| "Failed to read block data")?;
@@ -869,7 +889,7 @@ impl<'part> Partition<'part> {
                 }
 
                 // check for this block's index
-                if let Some(mut index) = partition.indexes.get(&blockid) {
+                if let Some(index) = partition.indexes.get(&blockid) {
                     let index = acquire!(write index);
                     index.set_head(head.head)
                         .with_context(|_|
@@ -885,7 +905,6 @@ impl<'part> Partition<'part> {
     }
 }
 
-
 impl<'part> Drop for Partition<'part> {
     fn drop(&mut self) {
         self.flush()
@@ -894,17 +913,15 @@ impl<'part> Drop for Partition<'part> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::block::BlockData;
+    use crate::ty::block::{Block, BlockId, BlockStorage};
+    use crate::ty::fragment::Fragment;
     use hyena_common::collections::HashMap;
-    use ty::block::{Block, BlockStorage, BlockId};
-    use std::fmt::Debug;
     use hyena_test::random::timestamp::{RandomTimestamp, RandomTimestampGen};
-    use block::BlockData;
-    use ty::fragment::Fragment;
-
+    use std::fmt::Debug;
 
     macro_rules! block_test_impl_mem {
         ($base: ident, $($variant: ident),* $(,)*) => {{
@@ -977,9 +994,6 @@ mod tests {
     }
 
     fn block_write_test_impl(short_map: &BlockStorageMap, long_map: &BlockStorageMap) {
-        use rayon::iter::IntoParallelRefMutIterator;
-        use block::BlockData;
-
         let count = 100;
 
         let root = tempdir!();
@@ -1007,8 +1021,9 @@ mod tests {
                 (part.blocks.get(&1).unwrap(), frags.get(1).unwrap()),
             ];
 
-            ops.as_mut_slice().par_iter_mut().for_each(
-                |&mut (ref mut block, ref data)| {
+            ops.as_mut_slice()
+                .par_iter_mut()
+                .for_each(|&mut (ref mut block, ref data)| {
                     let b = acquire!(write block);
 
                     map_fragment!(mut map owned b, *data, _blk, _frg, _fidx, {
@@ -1018,9 +1033,9 @@ mod tests {
                         _blk.as_mut_slice_append()[..slen].copy_from_slice(&_frg[..]);
                         _blk.set_written(count).unwrap();
 
-                    }, {}, {}).unwrap()
-                },
-                );
+                    }, {}, {})
+                    .unwrap()
+                });
         }
 
         // verify the data is there
@@ -1060,12 +1075,14 @@ mod tests {
     {
         let ts = RandomTimestampGen::iter().take(count).collect::<Vec<_>>();
 
-        let ts_min = ts.iter()
+        let ts_min = ts
+            .iter()
             .min()
             .ok_or_else(|| "Failed to get minimal timestamp")
             .unwrap();
 
-        let ts_max = ts.iter()
+        let ts_max = ts
+            .iter()
             .max()
             .ok_or_else(|| "Failed to get maximal timestamp")
             .unwrap();
@@ -1079,7 +1096,8 @@ mod tests {
             .unwrap();
 
         {
-            let ts_block = part.mut_blocks()
+            let ts_block = part
+                .mut_blocks()
                 .get_mut(&0)
                 .ok_or_else(|| "Failed to get ts block")
                 .unwrap();
@@ -1104,12 +1122,12 @@ mod tests {
     }
 
     fn scan_ts(ts_ty: BlockStorage) {
-
         let root = tempdir!();
 
         let (part, ts_min, ts_max) = ts_init(&root, ts_ty, 100);
 
-        let (ret_ts_min, ret_ts_max) = part.scan_ts()
+        let (ret_ts_min, ret_ts_max) = part
+            .scan_ts()
             .with_context(|_| "Failed to scan timestamps")
             .unwrap();
 
@@ -1118,7 +1136,7 @@ mod tests {
     }
 
     fn meta_ts(ts_ty: BlockStorage) {
-        use ty::fragment::FragmentRef;
+        use crate::ty::fragment::FragmentRef;
 
         let root = tempdir!();
         let row_count = 100;
@@ -1127,18 +1145,18 @@ mod tests {
             .with_context(|_| "Failed to create partition")
             .unwrap();
 
-        let ts = RandomTimestampGen::iter().take(row_count).collect::<Vec<_>>();
+        let ts = RandomTimestampGen::iter()
+            .take(row_count)
+            .collect::<Vec<_>>();
 
         let (ts_min, ts_max) = ts.iter().fold((0, 0), |(ts_min, ts_max), ts| {
-            (
-                min(*ts, ts_min),
-                max(*ts, ts_max),
-            )
+            (min(*ts, ts_min), max(*ts, ts_max))
         });
 
         let blocks = hashmap! {
             0 => ts_ty,
-        }.into();
+        }
+        .into();
 
         let frags = hashmap! {
             0 => Fragment::from(ts),
@@ -1146,18 +1164,19 @@ mod tests {
 
         let indexes = hashmap! {}.into();
 
-        let refs = frags.iter()
+        let refs = frags
+            .iter()
             .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
             .collect();
 
-        part.append(&blocks, &indexes, &refs, 0).expect("Partition append failed");
+        part.append(&blocks, &indexes, &refs, 0)
+            .expect("Partition append failed");
 
         assert_eq!(part.ts_min, Timestamp::from(ts_min));
         assert_eq!(part.ts_max, Timestamp::from(ts_max));
     }
 
     fn update_meta(ts_ty: BlockStorage) {
-
         let root = tempdir!();
         let (mut part, ts_min, ts_max) = ts_init(&root, ts_ty, 100);
 
@@ -1217,35 +1236,35 @@ mod tests {
     mod scan {
         use super::*;
 
-//     +--------+----+------+------+
-//     | rowidx | ts | col1 | col2 |
-//     +--------+----+------+------+
-//     |   0    | 1  |      | 10   |
-//     +--------+----+------+------+
-//     |   1    | 2  | 1    | 20   |
-//     +--------+----+------+------+
-//     |   2    | 3  |      |      |
-//     +--------+----+------+------+
-//     |   3    | 4  | 2    |      |
-//     +--------+----+------+------+
-//     |   4    | 5  |      |      |
-//     +--------+----+------+------+
-//     |   5    | 6  | 3    | 30   |
-//     +--------+----+------+------+
-//     |   6    | 7  |      |      |
-//     +--------+----+------+------+
-//     |   7    | 8  |      |      |
-//     +--------+----+------+------+
-//     |   8    | 9  | 4    | 7    |
-//     +--------+----+------+------+
-//     |   9    | 10 |      | 8    |
-//     +--------+----+------+------+
+        //     +--------+----+------+------+
+        //     | rowidx | ts | col1 | col2 |
+        //     +--------+----+------+------+
+        //     |   0    | 1  |      | 10   |
+        //     +--------+----+------+------+
+        //     |   1    | 2  | 1    | 20   |
+        //     +--------+----+------+------+
+        //     |   2    | 3  |      |      |
+        //     +--------+----+------+------+
+        //     |   3    | 4  | 2    |      |
+        //     +--------+----+------+------+
+        //     |   4    | 5  |      |      |
+        //     +--------+----+------+------+
+        //     |   5    | 6  | 3    | 30   |
+        //     +--------+----+------+------+
+        //     |   6    | 7  |      |      |
+        //     +--------+----+------+------+
+        //     |   7    | 8  |      |      |
+        //     +--------+----+------+------+
+        //     |   8    | 9  | 4    | 7    |
+        //     +--------+----+------+------+
+        //     |   9    | 10 |      | 8    |
+        //     +--------+----+------+------+
 
         macro_rules! scan_test_init {
             () => {{
-                use block::BlockType;
                 use self::BlockStorage::Memory;
-                use ty::fragment::FragmentRef;
+                use crate::block::BlockType;
+                use crate::ty::fragment::FragmentRef;
 
                 let root = tempdir!();
 
@@ -1259,7 +1278,8 @@ mod tests {
                     0 => Memory(BlockType::U64Dense),
                     1 => Memory(BlockType::U8Sparse),
                     2 => Memory(BlockType::U16Sparse),
-                }.into();
+                }
+                .into();
 
                 let frags = hashmap! {
                     0 => Fragment::from(vec![1_u64, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
@@ -1277,11 +1297,13 @@ mod tests {
 
                 let indexes = hashmap! {}.into();
 
-                let refs = frags.iter()
+                let refs = frags
+                    .iter()
                     .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
                     .collect();
 
-                part.append(&blocks, &indexes, &refs, 0).expect("Partition append failed");
+                part.append(&blocks, &indexes, &refs, 0)
+                    .expect("Partition append failed");
 
                 (root, part, ts)
             }};
@@ -1289,7 +1311,7 @@ mod tests {
 
         mod filter {
             use super::*;
-            use scanner::{ScanFilter, ScanFilterOp};
+            use crate::scanner::{ScanFilter, ScanFilterOp};
 
             mod and {
                 use super::*;
@@ -1300,18 +1322,19 @@ mod tests {
                 fn single_column() {
                     let (_root, part, _) = scan_test_init!();
 
-                    let expected = hashset!{1, 2};
+                    let expected = hashset! {1, 2};
 
                     let filters = hashmap! {
-                            0 => vec![
-                                vec![
-                                    ScanFilter::U64(ScanFilterOp::Lt(4)),
-                                    ScanFilter::U64(ScanFilterOp::Gt(1))
-                                ]
+                        0 => vec![
+                            vec![
+                                ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                ScanFilter::U64(ScanFilterOp::Gt(1))
                             ]
-                        };
+                        ]
+                    };
 
-                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
+                    let result = part
+                        .filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1323,29 +1346,29 @@ mod tests {
                 fn multiple_columns() {
                     let (_root, part, _) = scan_test_init!();
 
-                    let expected = hashset!{1};
+                    let expected = hashset! {1};
 
                     let filters = hashmap! {
-                            0 => vec![
-                                vec![
-                                    ScanFilter::U64(ScanFilterOp::Lt(4)),
-                                    ScanFilter::U64(ScanFilterOp::Gt(1))
-                                ]
-                            ],
-                            1 => vec![
-                                vec![
-                                    ScanFilter::U8(ScanFilterOp::Lt(2))
-                                ]
+                        0 => vec![
+                            vec![
+                                ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                ScanFilter::U64(ScanFilterOp::Gt(1))
                             ]
-                        };
+                        ],
+                        1 => vec![
+                            vec![
+                                ScanFilter::U8(ScanFilterOp::Lt(2))
+                            ]
+                        ]
+                    };
 
-                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
+                    let result = part
+                        .filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
                 }
             }
-
 
             mod or {
                 use super::*;
@@ -1356,22 +1379,23 @@ mod tests {
                 fn single_column() {
                     let (_root, part, _) = scan_test_init!();
 
-                    let expected = hashset!{1, 2, 7};
+                    let expected = hashset! {1, 2, 7};
 
                     let filters = hashmap! {
-                            0 => vec![
-                                vec![
-                                    ScanFilter::U64(ScanFilterOp::Lt(4)),
-                                    ScanFilter::U64(ScanFilterOp::Gt(1))
-                                ],
-                                vec![
-                                    ScanFilter::U64(ScanFilterOp::Gt(7)),
-                                    ScanFilter::U64(ScanFilterOp::Lt(9))
-                                ]
+                        0 => vec![
+                            vec![
+                                ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                ScanFilter::U64(ScanFilterOp::Gt(1))
+                            ],
+                            vec![
+                                ScanFilter::U64(ScanFilterOp::Gt(7)),
+                                ScanFilter::U64(ScanFilterOp::Lt(9))
                             ]
-                        };
+                        ]
+                    };
 
-                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
+                    let result = part
+                        .filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1383,30 +1407,31 @@ mod tests {
                 fn multiple_columns() {
                     let (_root, part, _) = scan_test_init!();
 
-                    let expected = hashset!{1, 8};
+                    let expected = hashset! {1, 8};
 
                     let filters = hashmap! {
-                            0 => vec![
-                                vec![
-                                    ScanFilter::U64(ScanFilterOp::Lt(4)),
-                                    ScanFilter::U64(ScanFilterOp::Gt(1))
-                                ],
-                                vec![
-                                    ScanFilter::U64(ScanFilterOp::Gt(5))
-                                ]
+                        0 => vec![
+                            vec![
+                                ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                ScanFilter::U64(ScanFilterOp::Gt(1))
                             ],
-                            1 => vec![
-                                vec![
-                                    ScanFilter::U8(ScanFilterOp::Lt(2))
-                                ],
-                                vec![
-                                    ScanFilter::U8(ScanFilterOp::Gt(3)),
-                                    ScanFilter::U8(ScanFilterOp::LtEq(4))
-                                ]
+                            vec![
+                                ScanFilter::U64(ScanFilterOp::Gt(5))
                             ]
-                        };
+                        ],
+                        1 => vec![
+                            vec![
+                                ScanFilter::U8(ScanFilterOp::Lt(2))
+                            ],
+                            vec![
+                                ScanFilter::U8(ScanFilterOp::Gt(3)),
+                                ScanFilter::U8(ScanFilterOp::LtEq(4))
+                            ]
+                        ]
+                    };
 
-                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
+                    let result = part
+                        .filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1415,9 +1440,9 @@ mod tests {
 
             #[cfg(all(feature = "nightly", test))]
             mod benches {
-                use test::{Bencher, black_box};
-                use scanner::{ScanFilter, ScanFilterOp, Scan};
                 use super::*;
+                use scanner::{Scan, ScanFilter, ScanFilterOp};
+                use test::{black_box, Bencher};
 
                 mod and {
                     use super::*;
@@ -1515,7 +1540,8 @@ mod tests {
 
                 let rowids = vec![1_usize, 2, 3];
 
-                let result = part.materialize(&None, Some(&rowids[..]))
+                let result = part
+                    .materialize(&None, Some(&rowids[..]))
                     .expect("Materialize failed");
 
                 let expected = hashmap! {
@@ -1533,7 +1559,8 @@ mod tests {
 
                 let rowids = vec![0_usize, 1, 3, 8];
 
-                let result = part.materialize(&None, Some(&rowids[..]))
+                let result = part
+                    .materialize(&None, Some(&rowids[..]))
                     .expect("Materialize failed");
 
                 let expected = hashmap! {
@@ -1547,8 +1574,8 @@ mod tests {
 
             #[cfg(all(feature = "nightly", test))]
             mod benches {
-                use test::{Bencher, black_box};
                 use super::*;
+                use test::{black_box, Bencher};
 
                 #[bench]
                 fn continuous(b: &mut Bencher) {
@@ -1583,12 +1610,12 @@ mod tests {
 
     #[test]
     fn space_for_blocks() {
-        use rayon::iter::IntoParallelRefMutIterator;
-        use block::{BlockType, BlockData};
-        use std::mem::size_of;
-        use params::BLOCK_SIZE;
-        use std::iter::FromIterator;
         use self::BlockStorage::Memory;
+        use crate::block::{BlockData, BlockType};
+        use crate::params::BLOCK_SIZE;
+        use rayon::iter::IntoParallelRefMutIterator;
+        use std::iter::FromIterator;
+        use std::mem::size_of;
 
         // reserve 20 records on timestamp
         let count = BLOCK_SIZE / size_of::<u64>() - 20;
@@ -1604,7 +1631,8 @@ mod tests {
         let blocks = hashmap! {
             0 => Memory(BlockType::U64Dense),
             1 => Memory(BlockType::U32Dense),
-        }.into();
+        }
+        .into();
 
         let frags = hashmap! {
             0 => Fragment::from(random!(gen u64, count)),
@@ -1615,7 +1643,8 @@ mod tests {
 
         let blocks = hashmap! {
             2 => Memory(BlockType::U64Sparse),
-        }.into();
+        }
+        .into();
 
         let frags = hashmap! {
             2 => Fragment::from((random!(gen u64, count), random!(gen u32, count))),
@@ -1630,16 +1659,17 @@ mod tests {
         };
 
         assert_eq!(
-            part.space_for_blocks(Vec::from_iter(blocks.keys().cloned()).as_slice()).unwrap(),
+            part.space_for_blocks(Vec::from_iter(blocks.keys().cloned()).as_slice())
+                .unwrap(),
             20
         );
     }
 
     mod ts {
-        use super::*;
-        use ty::fragment::FragmentRef;
-        use block::BlockType;
         use self::BlockStorage::Memory;
+        use super::*;
+        use crate::block::BlockType;
+        use crate::ty::fragment::FragmentRef;
 
         macro_rules! ts_test_init {
             ($ts_init: expr, $( $ts_frag: expr ),+ $(,)*) => {{
@@ -1740,7 +1770,6 @@ mod tests {
     mod serialize {
         use super::*;
 
-
         pub(super) fn blocks<'block, T>(type_map: HashMap<BlockId, T>)
         where
             T: Debug + Clone,
@@ -1758,7 +1787,9 @@ mod tests {
                 .with_context(|_| "Failed to create blocks")
                 .unwrap();
 
-            part.flush().with_context(|_| "Partition flush failed").unwrap();
+            part.flush()
+                .with_context(|_| "Partition flush failed")
+                .unwrap();
 
             assert_eq!(part.ts_min, ts);
             assert_eq!(part.ts_max, ts);
@@ -1793,7 +1824,9 @@ mod tests {
                 }
             }
 
-            part.flush().with_context(|_| "Partition flush failed").unwrap();
+            part.flush()
+                .with_context(|_| "Partition flush failed")
+                .unwrap();
         }
 
         #[test]
@@ -1815,7 +1848,6 @@ mod tests {
 
     mod deserialize {
         use super::*;
-
 
         pub(super) fn blocks<'block, T>(type_map: HashMap<BlockId, T>)
         where
@@ -1892,9 +1924,9 @@ mod tests {
     }
 
     mod memory {
-        use super::*;
-        use block::BlockType;
         use self::BlockStorage::Memory;
+        use super::*;
+        use crate::block::BlockType;
 
         #[test]
         fn scan_ts() {
@@ -1916,20 +1948,22 @@ mod tests {
             let short_map = block_map!(mem {
                 0usize => BlockType::U64Dense,
                 1usize => BlockType::U32Dense
-            }).into();
+            })
+            .into();
             let long_map = block_map!(mem {
                 0 => BlockType::U64Dense,
                 1 => BlockType::U32Dense,
                 2 => BlockType::U64Dense,
                 3 => BlockType::U32Dense
-            }).into();
+            })
+            .into();
 
             block_write_test_impl(&short_map, &long_map);
         }
 
         mod serialize {
-            use super::*;
             use self::BlockStorage::Memory;
+            use super::*;
 
             #[test]
             fn blocks() {
@@ -1950,8 +1984,8 @@ mod tests {
         }
 
         mod deserialize {
-            use super::*;
             use self::BlockStorage::Memory;
+            use super::*;
 
             #[test]
             fn blocks() {
@@ -1972,12 +2006,11 @@ mod tests {
         }
     }
 
-
     #[cfg(feature = "mmap")]
     mod mmap {
-        use super::*;
-        use block::BlockType;
         use self::BlockStorage::Memmap;
+        use super::*;
+        use crate::block::BlockType;
 
         #[test]
         fn scan_ts() {
@@ -1999,20 +2032,22 @@ mod tests {
             let short_map = block_map!(mmap {
                 0 => BlockType::U64Dense,
                 1 => BlockType::U32Dense
-            }).into();
+            })
+            .into();
             let long_map = block_map!(mmap {
                 0 => BlockType::U64Dense,
                 1 => BlockType::U32Dense,
                 2 => BlockType::U64Dense,
                 3 => BlockType::U32Dense
-            }).into();
+            })
+            .into();
 
             block_write_test_impl(&short_map, &long_map);
         }
 
         mod serialize {
-            use super::*;
             use self::BlockStorage::Memmap;
+            use super::*;
 
             #[test]
             fn blocks() {
@@ -2033,8 +2068,8 @@ mod tests {
         }
 
         mod deserialize {
-            use super::*;
             use self::BlockStorage::Memmap;
+            use super::*;
 
             #[test]
             fn blocks() {

@@ -1,11 +1,10 @@
 use super::*;
-use params::BLOCK_SIZE;
+use crate::block;
+use crate::params::BLOCK_SIZE;
+use crate::storage::mmap::MemmapStorage;
+use crate::ty::block::BlockId;
 use std::mem::size_of;
 use std::path::Path;
-use storage::mmap::MemmapStorage;
-use ty::block::BlockId;
-use block;
-
 
 column_index_impl!(MemmapStorage);
 
@@ -50,8 +49,9 @@ impl<'idx> ColumnIndex<'idx> {
                     // and that would be BLOCK_SIZE / 16 for a 256 bit bloom filter
                     BLOCK_SIZE * size_of::<BloomValue>() / size_of::<block::RelativeSlice>(),
                     "bloom",
-                ).with_context(|_| "Failed to create dense index storage")
-                    .unwrap();
+                )
+                .with_context(|_| "Failed to create dense index storage")
+                .unwrap();
 
                 BloomIndexBlock::<'idx, _>::new(slice_storage)
                     .with_context(|_| "Failed to create block")?
@@ -67,11 +67,10 @@ impl<'idx> From<ColumnIndex<'idx>> for super::ColumnIndex<'idx> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::{BLOCK_SIZE};
+    use crate::params::BLOCK_SIZE;
 
     #[test]
     fn prepare() {
@@ -110,7 +109,8 @@ mod tests {
         assert!(bloom_path.exists());
         assert!(bloom_path.is_file());
         assert_eq!(
-            bloom_path.metadata()
+            bloom_path
+                .metadata()
                 .with_context(|_| "Unable to get metadata for data file")
                 .unwrap()
                 .len() as usize,
@@ -119,5 +119,4 @@ mod tests {
             BLOCK_SIZE * 2
         );
     }
-
 }

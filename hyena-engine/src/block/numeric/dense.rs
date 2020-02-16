@@ -1,8 +1,8 @@
-use error::*;
-use std::marker::PhantomData;
+use crate::block::{BlockData, BufferHead, IndexMut, IndexRef};
+use crate::error::*;
+use crate::storage::Storage;
 use std::fmt::Debug;
-use storage::Storage;
-use block::{BlockData, BufferHead, IndexMut, IndexRef};
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DenseIndex;
@@ -17,7 +17,6 @@ pub struct DenseNumericBlock<'block, T: 'block + Debug, S: 'block + Storage<'blo
 
 impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> DenseNumericBlock<'block, T, S> {
     pub fn new(storage: S) -> Result<DenseNumericBlock<'block, T, S>> {
-
         Ok(DenseNumericBlock {
             storage,
             head: 0,
@@ -27,7 +26,8 @@ impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> DenseNumericBloc
 }
 
 impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> BufferHead
-    for DenseNumericBlock<'block, T, S> {
+    for DenseNumericBlock<'block, T, S>
+{
     fn head(&self) -> usize {
         self.head
     }
@@ -38,18 +38,21 @@ impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> BufferHead
 }
 
 impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> BlockData<'block, T, DenseIndex>
-    for DenseNumericBlock<'block, T, S> {
+    for DenseNumericBlock<'block, T, S>
+{
 }
 
 impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> AsRef<[T]>
-    for DenseNumericBlock<'block, T, S> {
+    for DenseNumericBlock<'block, T, S>
+{
     fn as_ref(&self) -> &[T] {
         self.storage.as_ref()
     }
 }
 
 impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> AsMut<[T]>
-    for DenseNumericBlock<'block, T, S> {
+    for DenseNumericBlock<'block, T, S>
+{
     fn as_mut(&mut self) -> &mut [T] {
         self.storage.as_mut()
     }
@@ -75,11 +78,10 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::BLOCK_SIZE;
+    use crate::params::BLOCK_SIZE;
     use extprim::i128::i128;
     use extprim::u128::u128;
 
@@ -96,7 +98,7 @@ mod tests {
                     .unwrap();
 
                 let s = [!$T::zero(), $T::zero()];
-                let source = s.into_iter().cycle();
+                let source = s.iter().cycle();
 
                 let len = {
                     let data = block.as_mut_slice_append();
@@ -122,12 +124,12 @@ mod tests {
 
     mod generic {
         use super::*;
-        use num::{Float, Integer, Zero};
-        use std::mem::size_of;
-        use std::fmt::Debug;
-        use std::ops::Not;
         use chrono::prelude::*;
         use hyena_common::ty::{Timestamp, ToTimestampMicros};
+        use num::{Float, Integer, Zero};
+        use std::fmt::Debug;
+        use std::mem::size_of;
+        use std::ops::Not;
 
         pub(super) fn block_ts<'block, S: 'block + Storage<'block, Timestamp>>(storage: S) {
             let mut block = DenseNumericBlock::new(storage)
@@ -146,13 +148,11 @@ mod tests {
 
             block.set_written(2).unwrap();
 
-
             let data = block.as_slice();
 
             assert_eq!(data[0], d1);
             assert_eq!(data[1], d2);
         }
-
 
         pub(super) fn block_t<'block, T, S>(storage: S)
         where
@@ -164,7 +164,7 @@ mod tests {
                 .unwrap();
 
             let s = [!T::zero(), T::zero()];
-            let source = s.into_iter().cycle();
+            let source = s.iter().cycle();
 
             let len = {
                 let data = block.as_mut_slice_append();
@@ -196,7 +196,7 @@ mod tests {
                 .unwrap();
 
             let s = [T::max_value(), T::zero()];
-            let source = s.into_iter().cycle();
+            let source = s.iter().cycle();
 
             let len = {
                 let data = block.as_mut_slice_append();
@@ -221,7 +221,7 @@ mod tests {
 
     mod memory {
         use super::*;
-        use storage::memory::PagedMemoryStorage;
+        use crate::storage::memory::PagedMemoryStorage;
 
         fn make_storage() -> PagedMemoryStorage {
             PagedMemoryStorage::new(BLOCK_SIZE)
@@ -298,7 +298,7 @@ mod tests {
     #[cfg(feature = "mmap")]
     mod mmap {
         use super::*;
-        use storage::mmap::MemmapStorage;
+        use crate::storage::mmap::MemmapStorage;
 
         fn make_storage(name: &str) -> MemmapStorage {
             let (_dir, file) = tempfile!(name);

@@ -1,28 +1,28 @@
-use error::*;
-use hyena_common::ty::Timestamp;
-use block::SparseIndex;
-use storage::manager::PartitionManager;
+use crate::block::SparseIndex;
+use crate::error::*;
+use crate::mutator::append::Append;
+use crate::params::{SourceId, PARTITION_GROUP_METADATA};
+use crate::scanner::{Scan, ScanResult, StreamState};
+use crate::storage::manager::PartitionManager;
+use crate::ty::block::{BlockStorageMap, BlockStorageMapType};
+use crate::ty::fragment::FragmentRef;
+use crate::ty::ColumnId;
 use hyena_common::collections::HashMap;
 use hyena_common::iter::IteratorExt;
-use std::collections::vec_deque::VecDeque;
-use std::path::{Path, PathBuf};
-use std::iter::FromIterator;
-use std::default::Default;
-use std::sync::RwLock;
-use params::{SourceId, PARTITION_GROUP_METADATA};
-use mutator::append::Append;
-use scanner::{Scan, ScanResult, StreamState};
-use ty::block::{BlockStorageMap, BlockStorageMapType};
-use ty::ColumnId;
+use hyena_common::ty::Timestamp;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::prelude::*;
+use std::collections::vec_deque::VecDeque;
+use std::default::Default;
+use std::iter::FromIterator;
 use std::iter::{once, repeat};
-use ty::fragment::FragmentRef;
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
+use super::catalog::Catalog;
 use super::partition::Partition;
 use super::partition_meta::PartitionMeta;
 use super::PartitionMap;
-use super::catalog::Catalog;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct PartitionGroup<'pg> {
@@ -83,10 +83,9 @@ impl<'pg> PartitionGroup<'pg> {
 
     /// Append data
     pub(super) fn append(&self, catalog: &Catalog, data: &Append) -> Result<usize> {
-
         // append with no data is a no-op
         if data.is_empty() {
-            return Ok(0)
+            return Ok(0);
         }
 
         // get types of all columns used in this append
@@ -98,10 +97,12 @@ impl<'pg> PartitionGroup<'pg> {
 
         let typemap: BlockStorageMap = colindices
             .iter()
-            .map(|colidx| if let Some(col) = columns.get(colidx) {
-                Ok((*colidx, **col))
-            } else {
-                bail!("column {} not found", colidx)
+            .map(|colidx| {
+                if let Some(col) = columns.get(colidx) {
+                    Ok((*colidx, **col))
+                } else {
+                    bail!("column {} not found", colidx)
+                }
             })
             .collect::<Result<BlockStorageMapType>>()
             .with_context(|_| err_msg("failed to prepare all columns"))?
@@ -131,15 +132,13 @@ impl<'pg> PartitionGroup<'pg> {
             // current has space -> return space
             let currentcap = partitions
                 .back()
-                .map(|part| part
-                    .space_for_blocks(&colindices)
-                    .unwrap_or_else(|| emptycap))
+                .map(|part| {
+                    part.space_for_blocks(&colindices)
+                        .unwrap_or_else(|| emptycap)
+                })
                 .unwrap_or_default();
 
-            (
-                emptycap,
-                currentcap,
-            )
+            (emptycap, currentcap)
         };
 
         // check if we can fit the data within current partition
@@ -152,7 +151,7 @@ impl<'pg> PartitionGroup<'pg> {
 
             (
                 currentcap,
-                (emptyfrags / emptycap) + if emptyfrags % emptycap != 0 { 1 } else { 0 }
+                (emptyfrags / emptycap) + if emptyfrags % emptycap != 0 { 1 } else { 0 },
             )
         } else {
             (fragcount, 0)
@@ -184,12 +183,21 @@ impl<'pg> PartitionGroup<'pg> {
 
         partitions
             .par_iter_mut()
-            .skip(if current_is_full { curidx } else { curidx.saturating_sub(1) })
+            .skip(if current_is_full {
+                curidx
+            } else {
+                curidx.saturating_sub(1)
+            })
             .zip(fragments.par_iter())
             .zip(offsets.par_iter())
             .for_each(|((partition, fragment), offset)| {
                 partition
-                    .append(&typemap, &catalog.indexes, &fragment, *offset as SparseIndex)
+                    .append(
+                        &typemap,
+                        &catalog.indexes,
+                        &fragment,
+                        *offset as SparseIndex,
+                    )
                     .with_context(|_| "partition append failed")
                     .unwrap();
             });
@@ -221,117 +229,108 @@ impl<'pg> PartitionGroup<'pg> {
 
             (
                 data.ts.as_slice().iter().take(1).collect(),
-                vec![
-                    once((0, FragmentRef::from(&data.ts)))
-                        .chain(
-                            data.data
-                                .iter()
-                                .map(|(col_id, frag)| (*col_id, FragmentRef::from(frag))),
-                        )
-                        .collect::<HashMap<_, _>>(),
-                ],
+                vec![once((0, FragmentRef::from(&data.ts)))
+                    .chain(
+                        data.data
+                            .iter()
+                            .map(|(col_id, frag)| (*col_id, FragmentRef::from(frag))),
+                    )
+                    .collect::<HashMap<_, _>>()],
                 vec![0],
             )
         } else {
             let mut fragments = Vec::with_capacity(required_partitions);
 
             let (_, ts_1, mut frag_1, mut ts_idx, offsets, _) = once(current_fragments)
-                    .filter(|c| *c != 0)
-                    // subtract one from the fragment count
-                    // as we will deal with the remainder in a later step
-                    .chain(repeat(empty_capacity).take(required_partitions.saturating_sub(1)))
-                    .fold(
-                        (
-                            // fragments
-                            &mut fragments,
-                            // ts_data
-                            data.ts.as_slice(),
-                            // frag_data
-                            data.data
-                                .iter()
-                                .map(|(col_id, frag)| (*col_id, FragmentRef::from(frag)))
-                                .collect::<HashMap<_, _>>(),
-                            // ts_index
-                            vec![],
-                            // offsets
-                            vec![0],
-                            // previous mid
-                            // this holds split point from the previous iteration
-                            // this value is used to offset sparse indexes
-                            // as they are not recalculated after the split
-                            0,
-                        ),
-                        |store, mid| {
+                .filter(|c| *c != 0)
+                // subtract one from the fragment count
+                // as we will deal with the remainder in a later step
+                .chain(repeat(empty_capacity).take(required_partitions.saturating_sub(1)))
+                .fold(
+                    (
+                        // fragments
+                        &mut fragments,
+                        // ts_data
+                        data.ts.as_slice(),
+                        // frag_data
+                        data.data
+                            .iter()
+                            .map(|(col_id, frag)| (*col_id, FragmentRef::from(frag)))
+                            .collect::<HashMap<_, _>>(),
+                        // ts_index
+                        vec![],
+                        // offsets
+                        vec![0],
+                        // previous mid
+                        // this holds split point from the previous iteration
+                        // this value is used to offset sparse indexes
+                        // as they are not recalculated after the split
+                        0,
+                    ),
+                    |store, mid| {
+                        let (fragments, ts_data, frag_data, mut ts_idx, mut offsets, previous_mid) =
+                            store;
 
-                            let (
-                                fragments,
-                                ts_data,
-                                frag_data,
-                                mut ts_idx,
-                                mut offsets,
-                                previous_mid
-                            ) = store;
+                        let offset_mid = mid.saturating_add(previous_mid);
 
-                            let offset_mid = mid.saturating_add(previous_mid);
+                        // when dealing with sparse blocks we don't know beforehand which
+                        // partition a sparse entry will belong to
+                        // but as our splitting algorithm calculates the capacity with an
+                        // assumption that sparse blocks are in fact dense, the "overflow" of
+                        // sparse data shouldn't happen
 
-                            // when dealing with sparse blocks we don't know beforehand which
-                            // partition a sparse entry will belong to
-                            // but as our splitting algorithm calculates the capacity with an
-                            // assumption that sparse blocks are in fact dense, the "overflow" of
-                            // sparse data shouldn't happen
+                        let (ts_0, ts_1) = ts_data.split_at(mid);
+                        let (mut frag_0, frag_1) = frag_data.iter().fold(
+                            (HashMap::new(), HashMap::new()),
+                            |acc, (col_id, frag)| {
+                                let (mut hm_0, mut hm_1) = acc;
 
-                            let (ts_0, ts_1) = ts_data.split_at(mid);
-                            let (mut frag_0, frag_1) = frag_data.iter().fold(
-                                (HashMap::new(), HashMap::new()),
-                                |acc, (col_id, frag)| {
-                                    let (mut hm_0, mut hm_1) = acc;
+                                if frag.is_sparse() {
+                                    // this uses unsafe conversion usize -> u32
+                                    // in reality we shouldn't ever use mid > u32::MAX
+                                    // it's still worth to consider adding some check
 
-                                    if frag.is_sparse() {
-                                        // this uses unsafe conversion usize -> u32
-                                        // in reality we shouldn't ever use mid > u32::MAX
-                                        // it's still worth to consider adding some check
+                                    // add offset only for sparse columns
+                                    // as sparse indexes are not recalculated after the split
 
-                                        // add offset only for sparse columns
-                                        // as sparse indexes are not recalculated after the split
+                                    let (frag_0, frag_1) = frag
+                                        .split_at_idx(offset_mid as SparseIndex)
+                                        .with_context(|_| "unable to split sparse fragment")
+                                        .unwrap();
 
-                                        let (frag_0, frag_1) = frag
-                                            .split_at_idx(offset_mid as SparseIndex)
-                                            .with_context(|_| "unable to split sparse fragment")
-                                            .unwrap();
+                                    hm_0.insert(*col_id, frag_0);
+                                    hm_1.insert(*col_id, frag_1);
+                                } else {
+                                    let (frag_0, frag_1) = frag.split_at(mid);
 
-                                        hm_0.insert(*col_id, frag_0);
-                                        hm_1.insert(*col_id, frag_1);
-                                    } else {
-                                        let (frag_0, frag_1) = frag.split_at(mid);
+                                    hm_0.insert(*col_id, frag_0);
+                                    hm_1.insert(*col_id, frag_1);
+                                }
 
-                                        hm_0.insert(*col_id, frag_0);
-                                        hm_1.insert(*col_id, frag_1);
-                                    }
+                                (hm_0, hm_1)
+                            },
+                        );
 
-                                    (hm_0, hm_1)
-                                },
-                            );
+                        // as we did split, ts_0 cannot be empty
+                        ts_idx.push(
+                            *(&ts_0[..]
+                                .first()
+                                .ok_or_else(|| err_msg("ts_0 was empty, this shouldn't happen"))
+                                .unwrap()),
+                        );
 
-                            // as we did split, ts_0 cannot be empty
-                            ts_idx.push(
-                                *(&ts_0[..]
-                                    .first()
-                                    .ok_or_else(|| err_msg("ts_0 was empty, this shouldn't happen"))
-                                    .unwrap()),
-                            );
+                        frag_0.insert(0, FragmentRef::from(&ts_0[..]));
+                        fragments.push(frag_0);
 
-                            frag_0.insert(0, FragmentRef::from(&ts_0[..]));
-                            fragments.push(frag_0);
+                        // this is the offset that is used to recalculate sparse index value
+                        // for a given fragment split
+                        // so we have to adjust it the same way we did for sparse fragment
+                        // split, using previous_mid
+                        offsets.push(offset_mid);
 
-                            // this is the offset that is used to recalculate sparse index value
-                            // for a given fragment split
-                            // so we have to adjust it the same way we did for sparse fragment
-                            // split, using previous_mid
-                            offsets.push(offset_mid);
-
-                            (fragments, ts_1, frag_1, ts_idx, offsets, offset_mid)
-                        },
-                    );
+                        (fragments, ts_1, frag_1, ts_idx, offsets, offset_mid)
+                    },
+                );
 
             // push the remainder, if any
 
@@ -357,72 +356,80 @@ impl<'pg> PartitionGroup<'pg> {
         } else {
             let partitions_len = partitions.len();
 
-            let (total_chunks, chunk_size, max_rows, threshold, mut skip) = if let Some(stream) =
-scan.stream {
-                let partition_capacity = if let Some(ref projection) = scan.projection {
-                    catalog.space_for_blocks(projection.iter())
-                } else {
-                    catalog.space_for_blocks(catalog.columns().keys())
-                };
-
-                if partition_capacity == 0 {
-                    warn!("scan provided row limit value of 0, defaulting to full scan");
-                    (1, partitions_len, None, 0, 0)
-                } else {
-                    // TODO: replace with div_euc when stable
-                    // https://github.com/rust-lang/rust/issues/49048
-
-                    let base_count = stream.row_limit / partition_capacity;
-
-                    let remainder_count = if stream.row_limit % partition_capacity != 0 {
-                        1
+            let (total_chunks, chunk_size, max_rows, threshold, mut skip) =
+                if let Some(stream) = scan.stream {
+                    let partition_capacity = if let Some(ref projection) = scan.projection {
+                        catalog.space_for_blocks(projection.iter())
                     } else {
-                        0
+                        catalog.space_for_blocks(catalog.columns().keys())
                     };
 
-                    let chunk_size = base_count + remainder_count;
+                    if partition_capacity == 0 {
+                        warn!("scan provided row limit value of 0, defaulting to full scan");
+                        (1, partitions_len, None, 0, 0)
+                    } else {
+                        // TODO: replace with div_euc when stable
+                        // https://github.com/rust-lang/rust/issues/49048
 
-                    // TODO: replace with div_euc when stable
-                    // https://github.com/rust-lang/rust/issues/49048
-                    let total_chunks =
-                        partitions_len / chunk_size + if partitions_len % chunk_size == 0 {
-                            0
-                        } else {
+                        let base_count = stream.row_limit / partition_capacity;
+
+                        let remainder_count = if stream.row_limit % partition_capacity != 0 {
                             1
+                        } else {
+                            0
                         };
 
-                    let skip = if let Some(state) = stream.state {
-                        state.skip_chunks
-                    } else {
-                        0
-                    };
+                        let chunk_size = base_count + remainder_count;
 
-                    (total_chunks, chunk_size, Some(stream.row_limit), stream.threshold, skip)
-                }
-            } else {
-                (1, partitions_len, None, 0, 0)
-            };
+                        // TODO: replace with div_euc when stable
+                        // https://github.com/rust-lang/rust/issues/49048
+                        let total_chunks = partitions_len / chunk_size
+                            + if partitions_len % chunk_size == 0 {
+                                0
+                            } else {
+                                1
+                            };
+
+                        let skip = if let Some(state) = stream.state {
+                            state.skip_chunks
+                        } else {
+                            0
+                        };
+
+                        (
+                            total_chunks,
+                            chunk_size,
+                            Some(stream.row_limit),
+                            stream.threshold,
+                            skip,
+                        )
+                    }
+                } else {
+                    (1, partitions_len, None, 0, 0)
+                };
 
             let mut materialized_count = 0;
 
             let slices = partitions.as_slices();
 
-            let result = slices.0
+            let result = slices
+                .0
                 .chunks(chunk_size)
-                .chain(slices.1
-                    .chunks(chunk_size))
+                .chain(slices.1.chunks(chunk_size))
                 .skip(skip)
                 .map(|partitions| {
                     partitions
                         .par_iter()
-                        .filter(|partition| if let Some(ref scan_partitions) = scan.partitions {
-                            // todo: benchmark Partition::get_id() -> &PartitionId
-                            scan_partitions.contains(&partition.get_id())
-                        } else {
-                            true
+                        .filter(|partition| {
+                            if let Some(ref scan_partitions) = scan.partitions {
+                                // todo: benchmark Partition::get_id() -> &PartitionId
+                                scan_partitions.contains(&partition.get_id())
+                            } else {
+                                true
+                            }
                         })
                         .filter(|partition| match scan.ts_range {
-                            None  => true,
+                            None => true,
                             Some(ref range) if partition.is_within_ts_range(range) => true,
                             _ => false,
                         })
@@ -434,51 +441,55 @@ scan.stream {
                         })
                         .reduce(
                             || None,
-                            |a, b| if a.is_none() {
-                                b
-                            } else if b.is_none() {
-                                a
-                            } else {
-                                let mut a = a.unwrap();
-                                let b = b.unwrap();
-                                a.merge(b).unwrap();
-                                Some(a)
+                            |a, b| {
+                                if a.is_none() {
+                                    b
+                                } else if b.is_none() {
+                                    a
+                                } else {
+                                    let mut a = a.unwrap();
+                                    let b = b.unwrap();
+                                    a.merge(b).unwrap();
+                                    Some(a)
+                                }
                             },
                         )
                 })
                 .threshold_take_while(|result| match (result, max_rows) {
-                        (Some(result), Some(max_rows)) => {
-                            // find the max number of rows fetched within this chunk
+                    (Some(result), Some(max_rows)) => {
+                        // find the max number of rows fetched within this chunk
 
-                            let chunk_rows = result.data
-                                .values()
-                                .filter_map(|frag| frag.as_ref().map(|frag| frag.len()))
-                                .max()
-                                .unwrap_or_default();
+                        let chunk_rows = result
+                            .data
+                            .values()
+                            .filter_map(|frag| frag.as_ref().map(|frag| frag.len()))
+                            .max()
+                            .unwrap_or_default();
 
-                            let batch = {materialized_count += chunk_rows; materialized_count};
+                        let batch = {
+                            materialized_count += chunk_rows;
+                            materialized_count
+                        };
 
-                            let lower = batch >= max_rows.saturating_sub(threshold);
-                            let upper = batch <= max_rows.saturating_add(threshold);
+                        let lower = batch >= max_rows.saturating_sub(threshold);
+                        let upper = batch <= max_rows.saturating_add(threshold);
 
-                            match (lower, upper) {
-                                // past the lower, but within the upper
-                                (true, true) => Some(false),
-                                // past the lower, past the upper
-                                (true, false) => None,
-                                // below both the lower and the upper
-                                (false, true) => Some(true),
-                                // doesn't make sense
-                                (false, false) => unreachable!(),
-                            }
+                        match (lower, upper) {
+                            // past the lower, but within the upper
+                            (true, true) => Some(false),
+                            // past the lower, past the upper
+                            (true, false) => None,
+                            // below both the lower and the upper
+                            (false, true) => Some(true),
+                            // doesn't make sense
+                            (false, false) => unreachable!(),
                         }
-                        _ => Some(true),
                     }
-                )
+                    _ => Some(true),
+                })
                 .inspect(|_| skip += 1)
-                .fold(
-                    None,
-                    |a, b| if a.is_none() {
+                .fold(None, |a, b| {
+                    if a.is_none() {
                         b
                     } else if b.is_none() {
                         a
@@ -487,24 +498,25 @@ scan.stream {
                         let b = b.unwrap();
                         a.merge(b).unwrap();
                         Some(a)
-                    },
-                )
+                    }
+                })
                 .unwrap_or_else(|| Default::default());
 
-            match
-            (
+            match (
                 max_rows,
                 result.is_empty() && materialized_count > 0,
-                skip < total_chunks
+                skip < total_chunks,
             ) {
                 (Some(max_rows), true, _) => {
                     // this means, that we didn't include anything
                     // but we still have data in this chunk
                     // which means, that the limit/threshold values are too low
 
-                    Err(err_msg(format!("row_limit/threshold values too low for the data set; \
+                    Err(err_msg(format!(
+                        "row_limit/threshold values too low for the data set; \
                             found {} records with row_limit = {} and threshold = {}",
-                            materialized_count, max_rows, threshold)))
+                        materialized_count, max_rows, threshold
+                    )))
                 }
                 (Some(_), _, true) => {
                     // we properly materialized at least one chunk
@@ -513,7 +525,7 @@ scan.stream {
                     let state = StreamState::new(skip);
                     Ok(ScanResult::from((result, state)))
                 }
-                _ => Ok(result) // either no streaming requested, or EOS
+                _ => Ok(result), // either no streaming requested, or EOS
             }
         }
     }
@@ -606,8 +618,7 @@ scan.stream {
             PartitionGroup,
             Vec<PartitionMeta>,
             Vec<PartitionMeta>,
-        ) = deserialize!(file meta)
-            .with_context(|_| "Failed to read catalog metadata")?;
+        ) = deserialize!(file meta).with_context(|_| "Failed to read catalog metadata")?;
 
         pg.immutable_partitions = PartitionGroup::prepare_partitions(&root, im_partition_metas)
             .with_context(|_| "Failed to read immutable partitions data")?;
@@ -633,7 +644,7 @@ impl<'pg> Drop for PartitionGroup<'pg> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datastore::tests::create_random_partitions;
+    use crate::datastore::tests::create_random_partitions;
 
     #[test]
     fn new() {
@@ -677,7 +688,7 @@ mod tests {
 
     mod split {
         use super::*;
-        use ty::fragment::{Fragment, TimestampFragment};
+        use crate::ty::fragment::{Fragment, TimestampFragment};
 
         mod sparse {
             use super::*;
@@ -796,19 +807,17 @@ mod tests {
                 let reqparts = 0;
                 let emptycap = 8;
 
-                let expected = vec![
-                    hashmap! {
-                        0 => Fragment::from(vec![0_u64, 1, 2, 3]),
-                        2 => Fragment::from((
-                            vec![0_u8, 1],
-                            vec![0_u32, 2],
-                        )),
-                        3 => Fragment::from((
-                            vec![0_u32],
-                            vec![1_u32],
-                        )),
-                    },
-                ];
+                let expected = vec![hashmap! {
+                    0 => Fragment::from(vec![0_u64, 1, 2, 3]),
+                    2 => Fragment::from((
+                        vec![0_u8, 1],
+                        vec![0_u32, 2],
+                    )),
+                    3 => Fragment::from((
+                        vec![0_u32],
+                        vec![1_u32],
+                    )),
+                }];
 
                 split_test(curfrags, reqparts, emptycap, generated_length, expected);
             }
@@ -865,19 +874,17 @@ mod tests {
                 let reqparts = 0;
                 let emptycap = 8;
 
-                let expected = vec![
-                    hashmap! {
-                        0 => Fragment::from(vec![0_u64, 1, 2, 3, 4, 5, 6, 7]),
-                        2 => Fragment::from((
-                            vec![0_u8, 1, 2, 3],
-                            vec![0_u32, 2, 4, 6],
-                        )),
-                        3 => Fragment::from((
-                            vec![0_u32, 1],
-                            vec![1_u32, 4],
-                        )),
-                    },
-                ];
+                let expected = vec![hashmap! {
+                    0 => Fragment::from(vec![0_u64, 1, 2, 3, 4, 5, 6, 7]),
+                    2 => Fragment::from((
+                        vec![0_u8, 1, 2, 3],
+                        vec![0_u32, 2, 4, 6],
+                    )),
+                    3 => Fragment::from((
+                        vec![0_u32, 1],
+                        vec![1_u32, 4],
+                    )),
+                }];
 
                 split_test(curfrags, reqparts, emptycap, generated_length, expected);
             }
@@ -910,16 +917,14 @@ mod tests {
                 let reqparts = 0;
                 let emptycap = 8;
 
-                let expected = vec![
-                    hashmap! {
-                        0 => Fragment::from(vec![0_u64, 1]),
-                        2 => Fragment::from((
-                            vec![0_u8],
-                            vec![0_u32],
-                        )),
-                        3 => Fragment::from((Vec::<u32>::new(), Vec::<SparseIndex>::new())),
-                    },
-                ];
+                let expected = vec![hashmap! {
+                    0 => Fragment::from(vec![0_u64, 1]),
+                    2 => Fragment::from((
+                        vec![0_u8],
+                        vec![0_u32],
+                    )),
+                    3 => Fragment::from((Vec::<u32>::new(), Vec::<SparseIndex>::new())),
+                }];
 
                 split_test(curfrags, reqparts, emptycap, generated_length, expected);
             }
@@ -960,19 +965,17 @@ mod tests {
                 let reqparts = 0;
                 let emptycap = 8;
 
-                let expected = vec![
-                    hashmap! {
-                        0 => Fragment::from(vec![0_u64, 1, 2, 3]),
-                        2 => Fragment::from((
-                            vec![0_u8, 1],
-                            vec![0_u32, 2],
-                        )),
-                        3 => Fragment::from((
-                            vec![0_u32],
-                            vec![1_u32],
-                        )),
-                    },
-                ];
+                let expected = vec![hashmap! {
+                    0 => Fragment::from(vec![0_u64, 1, 2, 3]),
+                    2 => Fragment::from((
+                        vec![0_u8, 1],
+                        vec![0_u32, 2],
+                    )),
+                    3 => Fragment::from((
+                        vec![0_u32],
+                        vec![1_u32],
+                    )),
+                }];
 
                 split_test(curfrags, reqparts, emptycap, generated_length, expected);
             }
@@ -1413,19 +1416,17 @@ mod tests {
                 let reqparts = 1;
                 let emptycap = 8;
 
-                let expected = vec![
-                    hashmap! {
-                        0 => Fragment::from(vec![0_u64, 1, 2, 3]),
-                        2 => Fragment::from((
-                            vec![0_u8, 1],
-                            vec![0_u32, 2],
-                        )),
-                        3 => Fragment::from((
-                            vec![0_u32],
-                             vec![1_u32],
-                        )),
-                    },
-                ];
+                let expected = vec![hashmap! {
+                    0 => Fragment::from(vec![0_u64, 1, 2, 3]),
+                    2 => Fragment::from((
+                        vec![0_u8, 1],
+                        vec![0_u32, 2],
+                    )),
+                    3 => Fragment::from((
+                        vec![0_u32],
+                         vec![1_u32],
+                    )),
+                }];
 
                 split_test(curfrags, reqparts, emptycap, generated_length, expected);
             }
@@ -1482,19 +1483,17 @@ mod tests {
                 let reqparts = 1;
                 let emptycap = 8;
 
-                let expected = vec![
-                    hashmap! {
-                        0 => Fragment::from(vec![0_u64, 1, 2, 3, 4, 5, 6, 7]),
-                        2 => Fragment::from((
-                            vec![0_u8, 1, 2, 3],
-                            vec![0_u32, 2, 4, 6],
-                        )),
-                        3 => Fragment::from((
-                            vec![0_u32, 1],
-                             vec![1_u32, 4],
-                        )),
-                    },
-                ];
+                let expected = vec![hashmap! {
+                    0 => Fragment::from(vec![0_u64, 1, 2, 3, 4, 5, 6, 7]),
+                    2 => Fragment::from((
+                        vec![0_u8, 1, 2, 3],
+                        vec![0_u32, 2, 4, 6],
+                    )),
+                    3 => Fragment::from((
+                        vec![0_u32, 1],
+                         vec![1_u32, 4],
+                    )),
+                }];
 
                 split_test(curfrags, reqparts, emptycap, generated_length, expected);
             }

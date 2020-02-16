@@ -1,6 +1,5 @@
-use std::fmt::{Display, Formatter, self};
+use std::fmt::{self, Display, Formatter};
 use std::ops::{BitAnd, BitOr, BitXor, Not};
-
 
 pub(crate) const BIT_LENGTH: usize = ::std::mem::size_of::<BloomValue>() * 8;
 pub(crate) const BASE_BIT_LENGTH: usize = ::std::mem::size_of::<u128>() * 8;
@@ -31,8 +30,7 @@ impl BloomValue {
     }
 
     pub fn iter<'bloom>(&'bloom self) -> impl Iterator<Item = bool> + 'bloom {
-        (0..BIT_LENGTH)
-            .map(move |bit| self.get(bit))
+        (0..BIT_LENGTH).map(move |bit| self.get(bit))
     }
 
     #[inline]
@@ -55,10 +53,7 @@ impl Not for BloomValue {
     type Output = Self;
 
     fn not(self) -> Self {
-        BloomValue([
-            !self.0[0],
-            !self.0[1]
-        ])
+        BloomValue([!self.0[0], !self.0[1]])
     }
 }
 
@@ -66,10 +61,7 @@ impl BitAnd for BloomValue {
     type Output = Self;
 
     fn bitand(self, rhs: Self) -> Self {
-        BloomValue([
-            self.0[0] & rhs.0[0],
-            self.0[1] & rhs.0[1]
-        ])
+        BloomValue([self.0[0] & rhs.0[0], self.0[1] & rhs.0[1]])
     }
 }
 
@@ -77,10 +69,7 @@ impl BitOr for BloomValue {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self {
-        BloomValue([
-            self.0[0] | rhs.0[0],
-            self.0[1] | rhs.0[1]
-        ])
+        BloomValue([self.0[0] | rhs.0[0], self.0[1] | rhs.0[1]])
     }
 }
 
@@ -88,10 +77,7 @@ impl BitXor for BloomValue {
     type Output = Self;
 
     fn bitxor(self, rhs: Self) -> Self {
-        BloomValue([
-            self.0[0] ^ rhs.0[0],
-            self.0[1] ^ rhs.0[1]
-        ])
+        BloomValue([self.0[0] ^ rhs.0[0], self.0[1] ^ rhs.0[1]])
     }
 }
 
@@ -109,15 +95,16 @@ impl<'b> From<&'b BloomValue> for bool {
 
 impl Display for BloomValue {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let mut s = self.iter().map(|bit| if bit { "1" } else { "0" }).collect::<Vec<_>>();
+        let mut s = self
+            .iter()
+            .map(|bit| if bit { "1" } else { "0" })
+            .collect::<Vec<_>>();
         s.reverse();
 
         let mut output = String::with_capacity(BIT_LENGTH + BIT_LENGTH / 4);
 
         for words in s.chunks(32) {
-
             for bits in words.chunks(4) {
-
                 for bit in bits {
                     output.push_str(bit);
                 }
@@ -132,11 +119,9 @@ impl Display for BloomValue {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn get() {

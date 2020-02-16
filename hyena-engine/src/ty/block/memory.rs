@@ -1,10 +1,10 @@
-use error::*;
-use storage::memory::PagedMemoryStorage;
-use block::SparseIndex;
-use std::mem::size_of;
-use params::{BLOCK_SIZE, STRING_POOL_SIZE};
+use crate::block::SparseIndex;
+use crate::error::*;
+use crate::params::{BLOCK_SIZE, STRING_POOL_SIZE};
+use crate::storage::memory::PagedMemoryStorage;
 use extprim::i128::i128;
 use extprim::u128::u128;
+use std::mem::size_of;
 
 block_impl!(PagedMemoryStorage);
 
@@ -19,7 +19,6 @@ impl<'block> Block<'block> {
     pub(crate) fn prepare_sparse_storage<T>(
         size: usize,
     ) -> Result<(PagedMemoryStorage, PagedMemoryStorage)> {
-
         let index_size = size / size_of::<T>() * size_of::<SparseIndex>();
 
         let data_stor = PagedMemoryStorage::new(size)
@@ -34,9 +33,8 @@ impl<'block> Block<'block> {
     #[inline]
     pub(crate) fn prepare_dense_pool_storage(
         size: usize,
-        pool_size: usize
+        pool_size: usize,
     ) -> Result<(PagedMemoryStorage, PagedMemoryStorage)> {
-
         let data_stor = PagedMemoryStorage::new(size)
             .with_context(|_| "Failed to create data block for dense storage")?;
 
@@ -48,13 +46,13 @@ impl<'block> Block<'block> {
 
     #[inline]
     pub(crate) fn create(block_type: BlockType) -> Result<Block<'block>> {
-        use ty::block::ty_impl::*;
+        use crate::ty::block::ty_impl::*;
 
         macro_rules! prepare_mem_dense {
             ($block: ty) => {{
                 let storage = Block::prepare_dense_storage(BLOCK_SIZE)
-                                .with_context(|_| "Failed to create storage")
-                                .unwrap();
+                    .with_context(|_| "Failed to create storage")
+                    .unwrap();
 
                 <$block>::new(storage)
                     .with_context(|_| "Failed to create block")?
@@ -65,8 +63,8 @@ impl<'block> Block<'block> {
         macro_rules! prepare_mem_sparse {
             ($block: ty, $T: ty) => {{
                 let (data, index) = Block::prepare_sparse_storage::<$T>(BLOCK_SIZE)
-                                .with_context(|_| "Failed to create storage")
-                                .unwrap();
+                    .with_context(|_| "Failed to create storage")
+                    .unwrap();
 
                 <$block>::new(data, index)
                     .with_context(|_| "Failed to create block")?
@@ -90,8 +88,8 @@ impl<'block> Block<'block> {
             BlockType::StringDense => {
                 let (slice_storage, pool_storage) =
                     Block::prepare_dense_pool_storage(BLOCK_SIZE, STRING_POOL_SIZE)
-                    .with_context(|_| "Failed to create dense string storage")
-                    .unwrap();
+                        .with_context(|_| "Failed to create dense string storage")
+                        .unwrap();
 
                 StringDenseBlock::<'block, _, _>::new(slice_storage, pool_storage)
                     .with_context(|_| "Failed to create block")?
@@ -119,12 +117,10 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::{BLOCK_SIZE, STRING_POOL_SIZE};
-
+    use crate::params::{BLOCK_SIZE, STRING_POOL_SIZE};
 
     #[test]
     fn prepare_dense() {
@@ -137,9 +133,7 @@ mod tests {
 
     fn prepare_sparse<T>() {
         let (data_stor, index_stor) = Block::prepare_sparse_storage::<T>(BLOCK_SIZE)
-            .with_context(|_| {
-                format!("Failed to prepare sparse storage for T={}", size_of::<T>())
-            })
+            .with_context(|_| format!("Failed to prepare sparse storage for T={}", size_of::<T>()))
             .unwrap();
 
         assert_eq!(data_stor.len(), BLOCK_SIZE);
@@ -201,11 +195,10 @@ mod tests {
 
     #[test]
     fn prepare_dense_string() {
-        let (data_stor, pool_stor) = Block::prepare_dense_pool_storage(BLOCK_SIZE, STRING_POOL_SIZE)
-            .with_context(|_| {
-                    format!("Failed to prepare dense string storage")
-            })
-            .unwrap();
+        let (data_stor, pool_stor) =
+            Block::prepare_dense_pool_storage(BLOCK_SIZE, STRING_POOL_SIZE)
+                .with_context(|_| format!("Failed to prepare dense string storage"))
+                .unwrap();
 
         assert_eq!(data_stor.len(), BLOCK_SIZE);
         assert_eq!(pool_stor.len(), STRING_POOL_SIZE);

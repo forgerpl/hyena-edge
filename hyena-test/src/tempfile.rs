@@ -1,25 +1,23 @@
 pub const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
 pub const DEFAULT_TEMPFILE_NAME: &str = "tempfile.bin";
 
-#[cfg(not(feature = "persistent_test_data"))]
-pub use tempdir::TempDir as TempDir;
 #[cfg(feature = "persistent_test_data")]
-pub use self::persistent_tempdir::TempDir as TempDir;
+pub use self::persistent_tempdir::TempDir;
+#[cfg(not(feature = "persistent_test_data"))]
+pub use tempdir::TempDir;
 
-pub use self::tempdir_tools::{TempDirExt, ThingWithTempDir};
 pub use self::persistent_tempdir::TempDir as PersistentTempDir;
+pub use self::tempdir_tools::{TempDirExt, ThingWithTempDir};
 pub use tempdir::TempDir as VolatileTempDir;
-
 
 pub(crate) mod tempdir_tools {
     use failure::{err_msg, Error, ResultExt};
-    use std::path::{Path, PathBuf};
+    use std::fmt::Debug;
     use std::fs::File;
     use std::io::Read;
     use std::marker::PhantomData;
-    use std::fmt::Debug;
     use std::ops::{Deref, DerefMut};
-    use tempdir;
+    use std::path::{Path, PathBuf};
 
     pub trait TempDirExt: AsRef<Path> {
         fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
@@ -45,7 +43,8 @@ pub(crate) mod tempdir_tools {
                 let mut f = File::open(p).context("unable to open file")?;
                 let mut buf = Vec::new();
 
-                f.read_to_end(&mut buf).context("unable to read from file")?;
+                f.read_to_end(&mut buf)
+                    .context("unable to read from file")?;
 
                 Ok(buf)
             } else {
@@ -64,7 +63,7 @@ pub(crate) mod tempdir_tools {
     /// Helper struct for easy binding things that use tempdir and rely on its lifetime
     /// while not encapsulating TempDir directly (e.g. `hyena_engine::Catalog`)
     #[derive(Debug)]
-    pub struct ThingWithTempDir<'td, T, TD=super::TempDir>
+    pub struct ThingWithTempDir<'td, T, TD = super::TempDir>
     where
         T: Debug + 'td,
         TD: TempDirExt + 'td,
@@ -132,11 +131,10 @@ pub(crate) mod tempdir_tools {
 }
 
 pub(crate) mod persistent_tempdir {
-    use tempdir;
-    use std::io::Result;
-    use std::path::Path;
-    use std::mem::{forget, replace};
     use super::tempdir_tools::TempDirExt;
+    use std::io::Result;
+    use std::mem::{forget, replace};
+    use std::path::Path;
 
     #[derive(Debug)]
     pub struct TempDir(Option<tempdir::TempDir>);
@@ -264,8 +262,8 @@ macro_rules! tempfile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
     use std::fs::remove_dir;
+    use std::path::Path;
 
     #[cfg(not(feature = "persistent_test_data"))]
     const DEFAULT_PERSISTENT: bool = false;
@@ -274,10 +272,11 @@ mod tests {
 
     macro_rules! path_name {
         ($path: expr) => {
-            $path.file_name()
-                 .expect("Unable to get path name")
-                 .to_str()
-                 .expect("Unable to convert path name to string")
+            $path
+                .file_name()
+                .expect("Unable to get path name")
+                .to_str()
+                .expect("Unable to convert path name to string")
         };
     }
 

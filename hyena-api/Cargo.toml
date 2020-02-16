@@ -5,6 +5,8 @@ authors = [
     "Tomasz Barański <tomasz.baranski@collective-sense.com>",
     "Jacek Całusiński <forger@forger.pl>"
 ]
+edition = "2018"
+
 
 [dependencies]
 clap = {version = "2.29.4", optional = true}
@@ -18,7 +20,7 @@ serde_derive = "1.0.27"
 log = "0.4.1"
 regex = {version = "0.2", optional = true}
 rand = {version = "0.4", optional = true}
-nanomsg-multi-server = { git = "ssh://git@gitlab.cs.int/rust/nanomsg-multi.git", optional = true }
+nanomsg-multi-server = { git = "https://github.com/forgerpl/nanomsg-multi.git", optional = true }
 
 [dependencies.uuid]
 features = [

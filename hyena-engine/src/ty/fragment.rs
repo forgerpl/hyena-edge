@@ -1,12 +1,12 @@
-use error::*;
-use block::SparseIndex;
-use hyena_common::ty::Timestamp;
-use ty::RowId;
-use std::mem::transmute;
+use crate::block::SparseIndex;
+use crate::error::*;
+use crate::ty::RowId;
 use extprim::i128::i128;
 use extprim::u128::u128;
-use std::marker::PhantomData;
+use hyena_common::ty::Timestamp;
 use hyena_common::ty::Value;
+use std::marker::PhantomData;
+use std::mem::transmute;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Fragment {
@@ -262,11 +262,19 @@ impl Fragment {
     pub(crate) fn max_index(&self) -> Option<RowId> {
         use self::Fragment::*;
 
-        frag_apply!(*self, _blk, idx, {
-            if !self.is_empty() { Some(self.len()) } else { None }
-        }, {
-            idx.last().map(|idx| *idx as RowId)
-        })
+        frag_apply!(
+            *self,
+            _blk,
+            idx,
+            {
+                if !self.is_empty() {
+                    Some(self.len())
+                } else {
+                    None
+                }
+            },
+            { idx.last().map(|idx| *idx as RowId) }
+        )
     }
 
     pub fn merge(&mut self, other: &mut Fragment, dense_count: usize) -> Result<()> {
@@ -280,8 +288,8 @@ impl Fragment {
             bail!("Merge offset greater than max index value");
         }
 
-        frag_apply!(merge
-            *self,
+        frag_apply!(
+            merge * self,
             *other,
             sblk,
             sidx,
@@ -293,10 +301,9 @@ impl Fragment {
             {
                 // shift index by the given offset
                 if offset != 0 {
-                    oidx.iter_mut()
-                        .for_each(|idx| {
-                            *idx += offset;
-                        })
+                    oidx.iter_mut().for_each(|idx| {
+                        *idx += offset;
+                    })
                 }
 
                 sblk.append(oblk);
@@ -308,21 +315,34 @@ impl Fragment {
     pub fn iter<'frag>(&'frag self) -> FragmentIter<'frag> {
         use self::Fragment::*;
 
-        frag_apply!(*self, blk, idx, {
-            FragmentIter(Box::new(blk.iter()
-                .map(|v| Value::from(v.clone()))
-                .enumerate()), PhantomData)
-        }, {
-            FragmentIter(Box::new(idx.iter()
-                .zip(blk)
-                .map(|(idx, v)| (*idx as usize, Value::from(v.clone())))
-            ), PhantomData)
-        })
+        frag_apply!(
+            *self,
+            blk,
+            idx,
+            {
+                FragmentIter(
+                    Box::new(blk.iter().map(|v| Value::from(v.clone())).enumerate()),
+                    PhantomData,
+                )
+            },
+            {
+                FragmentIter(
+                    Box::new(
+                        idx.iter()
+                            .zip(blk)
+                            .map(|(idx, v)| (*idx as usize, Value::from(v.clone()))),
+                    ),
+                    PhantomData,
+                )
+            }
+        )
     }
 }
 
-pub struct FragmentIter<'frag>(Box<Iterator<Item = (usize, Value)> + 'frag>,
-PhantomData<&'frag Value>);
+pub struct FragmentIter<'frag>(
+    Box<dyn Iterator<Item = (usize, Value)> + 'frag>,
+    PhantomData<&'frag Value>,
+);
 
 impl<'frag> Iterator for FragmentIter<'frag> {
     type Item = (usize, Value);
@@ -407,19 +427,29 @@ impl<'fragref> FragmentRef<'fragref> {
     pub fn iter(&self) -> FragmentIter<'fragref> {
         use self::FragmentRef::*;
 
-        frag_apply!(*self, blk, idx, {
-            FragmentIter(Box::new(blk.iter()
-                .map(|v| Value::from(v.clone()))
-                .enumerate()), PhantomData)
-        }, {
-            FragmentIter(Box::new(idx.iter()
-                .zip(*blk)
-                .map(|(idx, v)| (*idx as usize, Value::from(v.clone())))
-            ), PhantomData)
-        })
+        frag_apply!(
+            *self,
+            blk,
+            idx,
+            {
+                FragmentIter(
+                    Box::new(blk.iter().map(|v| Value::from(v.clone())).enumerate()),
+                    PhantomData,
+                )
+            },
+            {
+                FragmentIter(
+                    Box::new(
+                        idx.iter()
+                            .zip(*blk)
+                            .map(|(idx, v)| (*idx as usize, Value::from(v.clone()))),
+                    ),
+                    PhantomData,
+                )
+            }
+        )
     }
 }
-
 
 impl<'frag> From<&'frag Fragment> for FragmentRef<'frag> {
     fn from(source: &'frag Fragment) -> FragmentRef<'frag> {
@@ -433,17 +463,13 @@ impl<'frag> From<&'frag Fragment> for FragmentRef<'frag> {
 
 impl<'frag> From<&'frag TimestampFragment> for FragmentRef<'frag> {
     fn from(source: &'frag TimestampFragment) -> FragmentRef<'frag> {
-        FragmentRef::from(unsafe {
-            transmute::<&'frag [Timestamp], &'frag [u64]>(&source.0)
-        })
+        FragmentRef::from(unsafe { transmute::<&'frag [Timestamp], &'frag [u64]>(&source.0) })
     }
 }
 
 impl<'frag> From<&'frag [Timestamp]> for FragmentRef<'frag> {
     fn from(source: &'frag [Timestamp]) -> FragmentRef<'frag> {
-        FragmentRef::from(unsafe {
-            transmute::<&'frag [Timestamp], &'frag [u64]>(source)
-        })
+        FragmentRef::from(unsafe { transmute::<&'frag [Timestamp], &'frag [u64]>(source) })
     }
 }
 
@@ -519,7 +545,6 @@ impl<'frag> From<&'frag [String]> for FragmentRef<'frag> {
         FragmentRef::StringDense(source)
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TimestampFragment(Vec<Timestamp>);
@@ -839,7 +864,10 @@ mod tests {
 
             #[test]
             fn is_eq() {
-                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+                let buf = (1..100)
+                    .into_iter()
+                    .map(|i| ipsum_text(i))
+                    .collect::<Vec<_>>();
 
                 let frag = Fragment::from(buf.clone());
 
@@ -848,7 +876,10 @@ mod tests {
 
             #[test]
             fn is_sparse() {
-                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+                let buf = (1..100)
+                    .into_iter()
+                    .map(|i| ipsum_text(i))
+                    .collect::<Vec<_>>();
 
                 let frag = Fragment::from(buf.clone());
 
@@ -858,7 +889,10 @@ mod tests {
             #[test]
             #[should_panic(expected = "split_at_idx called on a dense block")]
             fn split_at_idx() {
-                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+                let buf = (1..100)
+                    .into_iter()
+                    .map(|i| ipsum_text(i))
+                    .collect::<Vec<_>>();
 
                 let frag = Fragment::from(buf.clone());
 
@@ -881,13 +915,17 @@ mod tests {
 
             #[test]
             fn iter() {
-                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+                let buf = (1..100)
+                    .into_iter()
+                    .map(|i| ipsum_text(i))
+                    .collect::<Vec<_>>();
 
                 let frag = Fragment::from(buf.clone());
 
                 let v = frag.iter().collect::<Vec<_>>();
 
-                let expected = buf.iter()
+                let expected = buf
+                    .iter()
                     .enumerate()
                     .map(|(idx, val)| (idx, Value::from(val.clone())))
                     .collect::<Vec<_>>();

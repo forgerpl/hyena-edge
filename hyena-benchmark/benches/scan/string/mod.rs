@@ -1,34 +1,28 @@
-use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column,
-                   Fragment, Result, Scan, ScanFilter, ScanFilterOp, Timestamp,
-                   TimestampFragment, Regex, StreamConfig};
+use hyena_engine::{
+    Append, BlockData, BlockStorage, BlockType, Catalog, Column, Fragment, Regex, Result, Scan,
+    ScanFilter, ScanFilterOp, StreamConfig, Timestamp, TimestampFragment,
+};
 
-use std::iter::repeat;
 use hyena_common::collections::HashMap;
+use std::iter::repeat;
 
 use criterion::Criterion;
 
-use config::{catalog_dir, TempDir};
+use crate::config::{catalog_dir, TempDir};
 
 mod data;
 
 fn gen_ip() -> impl Iterator<Item = (u64, u64)> {
     use self::data::IP_ADDRESSES;
 
-    IP_ADDRESSES
-        .chunks(2)
-        .cycle()
-        .map(|ip| (ip[0], ip[1]))
+    IP_ADDRESSES.chunks(2).cycle().map(|ip| (ip[0], ip[1]))
 }
 
 fn gen_text() -> impl Iterator<Item = &'static str> {
     use self::data::TEXT_DATA;
 
-    TEXT_DATA
-        .iter()
-        .map(|s| *s)
-        .cycle()
+    TEXT_DATA.iter().map(|s| *s).cycle()
 }
-
 
 //  ID |   Name    |        Type
 // ----+-----------+---------------------
@@ -42,8 +36,7 @@ const IP1_COLUMN: usize = 2;
 const IP2_COLUMN: usize = 3;
 const TEXT_COLUMN: usize = 4;
 
-fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment, BlockData)
-{
+fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment, BlockData) {
     let tsfrag = TimestampFragment::from(
         repeat(())
             .take(record_count)
@@ -52,15 +45,17 @@ fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment
             .collect::<Vec<_>>(),
     );
 
-    let (ip1, ip2) = gen_ip()
-        .take(record_count)
-        .unzip::<_, _, Vec<_>, Vec<_>>();
+    let (ip1, ip2) = gen_ip().take(record_count).unzip::<_, _, Vec<_>, Vec<_>>();
 
     let ip1 = Fragment::from(ip1);
     let ip2 = Fragment::from(ip2);
 
     let textfrag = Fragment::from(
-        gen_text().take(record_count).map(ToOwned::to_owned).collect::<Vec<String>>());
+        gen_text()
+            .take(record_count)
+            .map(ToOwned::to_owned)
+            .collect::<Vec<String>>(),
+    );
 
     let data = hashmap! {
         IP1_COLUMN => ip1,
@@ -71,8 +66,7 @@ fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment
     (tsfrag, data)
 }
 
-fn prepare_data<'cat>(record_count: usize) -> Result<(Timestamp, TempDir, Catalog<'cat>)>
-{
+fn prepare_data<'cat>(record_count: usize) -> Result<(Timestamp, TempDir, Catalog<'cat>)> {
     let dir = catalog_dir()?;
     let mut cat = Catalog::new(&dir)?;
 
@@ -102,107 +96,113 @@ fn prepare_data<'cat>(record_count: usize) -> Result<(Timestamp, TempDir, Catalo
 }
 
 fn filter_string_bench(c: &mut Criterion) {
-    c.bench_function_over_inputs("filter string(185)", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "filter string(185)",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    TEXT_COLUMN,
-                    vec![
-                        vec![ScanFilter::String(ScanFilterOp::Matches(
-                                Regex::new("201188").unwrap())),
-                        ]
-                    ],
-                );
+                    filters.insert(
+                        TEXT_COLUMN,
+                        vec![vec![ScanFilter::String(ScanFilterOp::Matches(
+                            Regex::new("201188").unwrap(),
+                        ))]],
+                    );
 
-                Some(filters)
-            },
-            Some(vec![]),
-            None,
-            None,
-            None,
-            None,
-        );
+                    Some(filters)
+                },
+                Some(vec![]),
+                None,
+                None,
+                None,
+                None,
+            );
 
-        b.iter(move || {
-            cat.scan(&scan).unwrap();
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+            b.iter(move || {
+                cat.scan(&scan).unwrap();
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 fn filter_materialize_string_bench(c: &mut Criterion) {
-    c.bench_function_over_inputs("filter and materialize string(185)", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "filter and materialize string(185)",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    TEXT_COLUMN,
-                    vec![
-                        vec![ScanFilter::String(ScanFilterOp::Matches(
-                                Regex::new("201188").unwrap())),
-                        ]
-                    ],
-                );
+                    filters.insert(
+                        TEXT_COLUMN,
+                        vec![vec![ScanFilter::String(ScanFilterOp::Matches(
+                            Regex::new("201188").unwrap(),
+                        ))]],
+                    );
 
-                Some(filters)
-            },
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+                    Some(filters)
+                },
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
 
-        b.iter(move || {
-            cat.scan(&scan).unwrap();
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+            b.iter(move || {
+                cat.scan(&scan).unwrap();
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 fn filter_materialize_stream_string_bench(c: &mut Criterion) {
     const STREAM_ROW_LIMIT: usize = 131072;
     const STREAM_THRESHOLD: usize = 1_000;
 
-    c.bench_function_over_inputs("streaming filter and materialize string(185)", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "streaming filter and materialize string(185)",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    4,
-                    vec![
-                        vec![ScanFilter::String(ScanFilterOp::Matches(
-                                Regex::new("201188").unwrap())),
-                        ]
-                    ],
-                );
+                    filters.insert(
+                        4,
+                        vec![vec![ScanFilter::String(ScanFilterOp::Matches(
+                            Regex::new("201188").unwrap(),
+                        ))]],
+                    );
 
-                Some(filters)
-            },
-            None,
-            None,
-            None,
-            None,
-            Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
-        );
+                    Some(filters)
+                },
+                None,
+                None,
+                None,
+                None,
+                Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
+            );
 
-        b.iter(move || {
-            let mut scan = scan.clone();
+            b.iter(move || {
+                let mut scan = scan.clone();
 
-            while {
-                let result = cat.scan(&scan).unwrap();
-                scan.set_stream_state(result.stream_state_data()).unwrap()
-            } {};
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+                while {
+                    let result = cat.scan(&scan).unwrap();
+                    scan.set_stream_state(result.stream_state_data()).unwrap()
+                } {}
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 criterion_group!(

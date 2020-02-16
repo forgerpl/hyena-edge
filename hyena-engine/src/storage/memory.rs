@@ -1,12 +1,11 @@
-use error::*;
-use super::{Storage, Realloc, ByteStorage};
+use super::{ByteStorage, Realloc, Storage};
+use crate::error::*;
 use hyena_common::map_type::{map_type, map_type_mut};
-use std::mem::{size_of, uninitialized, zeroed};
-use std::intrinsics::copy_nonoverlapping;
-use std::marker::PhantomData;
 use std::fmt;
 use std::fmt::Debug;
-
+use std::intrinsics::copy_nonoverlapping;
+use std::marker::PhantomData;
+use std::mem::{size_of, zeroed, MaybeUninit};
 
 const PAGE_SIZE: usize = 1 << 12;
 
@@ -34,14 +33,17 @@ impl<Align: Zero + Debug + Copy + Clone + PartialEq> MemoryStorage<Align> {
 }
 
 impl<'stor, T: 'stor, Align: Zero + Debug + Copy + Clone + PartialEq> Storage<'stor, T>
-    for MemoryStorage<Align> {
+    for MemoryStorage<Align>
+{
     fn sync(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
 impl<'stor, Align: Zero + Debug + Copy + Clone + PartialEq> ByteStorage<'stor>
-    for MemoryStorage<Align> {}
+    for MemoryStorage<Align>
+{
+}
 
 impl<T, Align: Zero + Debug + Copy + Clone + PartialEq> AsRef<[T]> for MemoryStorage<Align> {
     fn as_ref(&self) -> &[T] {
@@ -57,7 +59,6 @@ impl<T, Align: Zero + Debug + Copy + Clone + PartialEq> AsMut<[T]> for MemorySto
 
 impl<Align: Zero + Debug + Copy + Clone + PartialEq> Realloc for MemoryStorage<Align> {
     fn realloc(self, size: usize) -> Result<Self> {
-
         let mut new_storage = Self::new(size)?;
 
         let copy_size = ::std::cmp::min(size, self.realloc_size());
@@ -107,18 +108,16 @@ impl fmt::Debug for Page {
 impl Clone for Page {
     fn clone(&self) -> Page {
         unsafe {
-            let mut dst = uninitialized::<Page>();
-            copy_nonoverlapping(self, &mut dst, 1);
-            dst
+            let mut dst = MaybeUninit::<Page>::uninit();
+            copy_nonoverlapping(self, dst.as_mut_ptr(), 1);
+            dst.assume_init()
         }
     }
 }
 
 impl Default for Page {
     fn default() -> Page {
-        unsafe {
-            zeroed()
-        }
+        unsafe { zeroed() }
     }
 }
 
@@ -203,7 +202,8 @@ mod tests {
     fn it_shrinks_block() {
         let storage = create_block();
 
-        let mut storage = storage.realloc(BLOCK_SIZE / 2)
+        let mut storage = storage
+            .realloc(BLOCK_SIZE / 2)
             .with_context(|_| "failed to shrink PagedMemoryStorage")
             .unwrap();
 
@@ -224,7 +224,8 @@ mod tests {
     fn it_grows_block() {
         let storage = create_block();
 
-        let mut storage = storage.realloc(BLOCK_SIZE * 2)
+        let mut storage = storage
+            .realloc(BLOCK_SIZE * 2)
             .with_context(|_| "failed to shrink PagedMemoryStorage")
             .unwrap();
 

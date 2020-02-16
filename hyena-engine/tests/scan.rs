@@ -1,19 +1,15 @@
-extern crate hyena_engine;
-extern crate hyena_test;
-extern crate hyena_common;
-extern crate failure;
+use hyena_engine::{
+    Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap, Fragment, Result, Scan,
+    ScanFilter, ScanFilterOp, ScanResult, SparseIndex, Timestamp, TimestampFragment,
+};
 
-use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap,
-                   Fragment, Result, Scan, ScanFilter, ScanFilterOp, ScanResult,
-                   SparseIndex, Timestamp, TimestampFragment};
-
-use std::iter::repeat;
 use hyena_common::collections::HashMap;
+use std::iter::repeat;
 
 #[macro_use]
 mod common;
 
-use common::{catalog_dir, wrap_result, TempDir};
+use crate::common::{catalog_dir, wrap_result, TempDir};
 
 fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment, BlockData) {
     let tsfrag = TimestampFragment::from(
@@ -82,14 +78,22 @@ fn prepare_data<'cat>(record_count: usize) -> Result<(Timestamp, TempDir, Catalo
 
     let mut column_map = ColumnMap::new();
 
-    column_map.insert(2, Column::new(
-        BlockStorage::Memmap(BlockType::U64Dense), "dense1"));
-    column_map.insert(3, Column::new(
-        BlockStorage::Memmap(BlockType::I32Dense), "dense2"));
-    column_map.insert(4, Column::new(
-        BlockStorage::Memmap(BlockType::U64Sparse), "sparse1"));
-    column_map.insert(5, Column::new(
-        BlockStorage::Memmap(BlockType::I64Sparse), "sparse2"));
+    column_map.insert(
+        2,
+        Column::new(BlockStorage::Memmap(BlockType::U64Dense), "dense1"),
+    );
+    column_map.insert(
+        3,
+        Column::new(BlockStorage::Memmap(BlockType::I32Dense), "dense2"),
+    );
+    column_map.insert(
+        4,
+        Column::new(BlockStorage::Memmap(BlockType::U64Sparse), "sparse1"),
+    );
+    column_map.insert(
+        5,
+        Column::new(BlockStorage::Memmap(BlockType::I64Sparse), "sparse2"),
+    );
 
     cat.add_columns(column_map)?;
 

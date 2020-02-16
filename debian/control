@@ -1,12 +1,12 @@
 Source: hyena
 Section: net
 Priority: optional
-Maintainer: Jacek Całusiński <forger@collective-sense.com>
+Maintainer: Jacek Całusiński <forger@forger.pl>
 Build-Depends: debhelper (>= 9.0.0), libnanomsg5 (>= 1.1.0)
 Standards-Version: 3.9.8
-Homepage: https://gitlab.cs.int/hyena/hyena
-Vcs-Browser: https://gitlab.cs.int/hyena/hyena
-Vcs-Git: https://gitlab.cs.int/hyena/hyena.git
+Homepage: https://github.com/forgerpl/hyena-edge
+Vcs-Browser: https://github.com/forgerpl/hyena-edge
+Vcs-Git: https://github.com/forgerpl/hyena-edge.git
 
 Package: hyena
 Architecture: amd64

@@ -6,20 +6,22 @@ authors = [
 ]
 name = "hyena"
 version = "0.1.0"
+edition = "2018"
 
 [workspace]
 
 [dependencies]
-clap = "2.29.4"
-flexi_logger = "0.6.11"
-log = "0.4.1"
-dotenv = "0.10.1"
-futures = "0.1.18"
-tokio-core = "0.1.12"
-bytes = "0.4.6"
-bincode = "0.9.2"
-nanomsg-multi-server = { git = "ssh://git@gitlab.cs.int/rust/nanomsg-multi.git" }
+clap = "2.33.0"
+flexi_logger = "0.14.8"
+log = "0.4.8"
+dotenv = "0.15.0"
+futures = "^0.1.29"
+tokio-core = "0.1.17"
+bytes = "0.5.4"
+bincode = "1.2.1"
+nanomsg-multi-server = { git = "https://github.com/forgerpl/nanomsg-multi.git" }
 hyena-benchmark = { path = "hyena-benchmark" }
+nanomsg = "0.7.2"
 
 [dependencies.hyena-engine]
 optional = false
@@ -42,14 +44,11 @@ optional = false
 path = "hyena-bloom-filter"
 
 [dependencies.colored_logger]
-git = "ssh://git@gitlab.cs.int/rust/colored-logger.git"
+git = "https://github.com/forgerpl/colored_logger.git"
 optional = false
 
-[dependencies.nanomsg]
-git = "ssh://git@gitlab.cs.int/rust/nanomsg-rs.git"
-
 [dependencies.nanomsg-tokio]
-git = "ssh://git@gitlab.cs.int/rust/nanomsg-tokio.git"
+git = "https://github.com/forgerpl/nanomsg-tokio.git"
 optional = false
 
 [features]

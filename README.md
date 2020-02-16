@@ -1,8 +1,6 @@
 Hyena
 -----
 
-[![pipeline status](https://gitlab.cs.int/hyena/hyena/badges/master/pipeline.svg)](https://gitlab.cs.int/hyena/hyena/commits/master)
-
 ## Introduction
 
 Hyena aims to be a fast time-series storage engine for mostly immutable data.
@@ -312,7 +310,7 @@ compression=lzo
 ## Authors and contributors
 
 - Przemek Maciołek  - https://github.com/pmaciolek/ (concept and original implementation)
-- Jacek / Forger - https://github.com/forgerpl 
+- Jacek / Forger - https://github.com/forgerpl
 - Kuba Wieczorek - https://github.com/jakubadamw
 - Damian / IC3Q - https://github.com/IC3Q
 

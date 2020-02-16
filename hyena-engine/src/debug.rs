@@ -1,23 +1,24 @@
 use hyena_common::ty::Value;
-use ty::{ColumnId, fragment::{Fragment, FragmentIter, FragmentRef}};
-use scanner::ScanResult;
 use mutator::Append;
+use scanner::ScanResult;
+use ty::{
+    fragment::{Fragment, FragmentIter, FragmentRef},
+    ColumnId,
+};
 
-use prettytable::Table;
-use prettytable::format::Alignment;
-use std::fmt::Display;
 use hyena_common::collections::HashMap;
+use prettytable::format::Alignment;
+use prettytable::Table;
+use std::fmt::Display;
 use std::iter::{once, Enumerate, Peekable};
 use std::ops::Deref;
 
-
 macro_rules! table {
     ($fragmap: expr, $header: expr, $offset: expr) => {{
-        use prettytable::Table;
-        use prettytable::row::Row;
         use prettytable::cell::Cell;
+        use prettytable::row::Row;
+        use prettytable::Table;
         use term::{color, Attr};
-
 
         let mut table = Table::new();
 
@@ -47,11 +48,13 @@ macro_rules! table {
             let mut keys = fm.get_columns();
             keys.sort_by_key(|&(k, _)| k);
 
-            let sparse_map = keys.iter()
+            let sparse_map = keys
+                .iter()
                 .map(|&(colid, _)| fm.is_sparse(colid))
                 .collect::<Vec<_>>();
 
-            let iters = keys.into_iter()
+            let iters = keys
+                .into_iter()
                 .map(|(_, fragiter)| fragiter.peekable())
                 .collect::<Vec<_>>();
 
@@ -150,8 +153,11 @@ pub trait DebugTable {
         self.to_table_with_sparse_offset(Some(columns), 0)
     }
 
-    fn to_table_with_sparse_offset<T: Display>(&self, columns: Option<Vec<T>>, offset: usize)
-    -> Table {
+    fn to_table_with_sparse_offset<T: Display>(
+        &self,
+        columns: Option<Vec<T>>,
+        offset: usize,
+    ) -> Table {
         if let Some(columns) = columns {
             table!(
                 self,
@@ -239,8 +245,11 @@ impl DebugTable for Vec<Fragment> {
 }
 
 impl DebugTable for ScanResult {
-    fn to_table_with_sparse_offset<T: Display>(&self, columns: Option<Vec<T>>, offset: usize)
-    -> Table {
+    fn to_table_with_sparse_offset<T: Display>(
+        &self,
+        columns: Option<Vec<T>>,
+        offset: usize,
+    ) -> Table {
         self.deref().to_table_with_sparse_offset(columns, offset)
     }
 
@@ -307,12 +316,11 @@ impl DebugTable for Append {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ty::fragment::Fragment;
     use hyena_common::collections::HashMap;
+    use ty::fragment::Fragment;
 
     #[test]
     fn rowiter() {

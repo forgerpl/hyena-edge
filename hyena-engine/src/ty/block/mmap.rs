@@ -1,12 +1,12 @@
-use error::*;
 use super::BlockId;
-use storage::mmap::MemmapStorage;
-use block::SparseIndex;
+use crate::block::SparseIndex;
+use crate::error::*;
+use crate::storage::mmap::MemmapStorage;
 use std::path::Path;
 //use fs::ensure_file;
 use std::mem::size_of;
 //use std::fs::remove_file;
-use params::{BLOCK_SIZE, STRING_POOL_SIZE};
+use crate::params::{BLOCK_SIZE, STRING_POOL_SIZE};
 use extprim::i128::i128;
 use extprim::u128::u128;
 
@@ -19,7 +19,6 @@ impl<'block> Block<'block> {
         id: BlockId,
         size: usize,
     ) -> Result<MemmapStorage> {
-
         let root = root.as_ref();
 
         if !root.exists() {
@@ -36,9 +35,8 @@ impl<'block> Block<'block> {
         root: P,
         id: BlockId,
         size: usize,
-        pool_size: usize
+        pool_size: usize,
     ) -> Result<(MemmapStorage, MemmapStorage)> {
-
         let root = root.as_ref();
         let slice_stor = Block::prepare_dense_storage(&root, id, size)?;
 
@@ -56,7 +54,6 @@ impl<'block> Block<'block> {
         id: BlockId,
         size: usize,
     ) -> Result<(MemmapStorage, MemmapStorage)> {
-
         let root = root.as_ref();
 
         if !root.exists() {
@@ -83,13 +80,13 @@ impl<'block> Block<'block> {
         block_type: BlockType,
         block_id: BlockId,
     ) -> Result<Block<'block>> {
-        use ty::block::ty_impl::*;
+        use crate::ty::block::ty_impl::*;
 
         macro_rules! prepare_mmap_dense {
             ($block: ty) => {{
                 let storage = Block::prepare_dense_storage(&root, block_id, BLOCK_SIZE)
-                                .with_context(|_| "Failed to create storage")
-                                .unwrap();
+                    .with_context(|_| "Failed to create storage")
+                    .unwrap();
 
                 <$block>::new(storage)
                     .with_context(|_| "Failed to create block")?
@@ -99,18 +96,16 @@ impl<'block> Block<'block> {
 
         macro_rules! prepare_mmap_sparse {
             ($block: ty, $T: ty) => {{
-                let (data, index) = Block::prepare_sparse_storage::<$T, _>(&root,
-                                                                        block_id,
-                                                                        BLOCK_SIZE)
-                                .with_context(|_| "Failed to create storage")
-                                .unwrap();
+                let (data, index) =
+                    Block::prepare_sparse_storage::<$T, _>(&root, block_id, BLOCK_SIZE)
+                        .with_context(|_| "Failed to create storage")
+                        .unwrap();
 
                 <$block>::new(data, index)
                     .with_context(|_| "Failed to create block")?
                     .into()
             }};
         }
-
 
         Ok(match block_type {
             BlockType::I8Dense => prepare_mmap_dense!(I8DenseBlock<'block, _>),
@@ -130,10 +125,10 @@ impl<'block> Block<'block> {
                     &root,
                     block_id,
                     BLOCK_SIZE,
-                    STRING_POOL_SIZE
+                    STRING_POOL_SIZE,
                 )
-                    .with_context(|_| "Failed to create dense string storage")
-                    .unwrap();
+                .with_context(|_| "Failed to create dense string storage")
+                .unwrap();
 
                 StringDenseBlock::<'block, _, _>::new(slice_storage, pool_storage)
                     .with_context(|_| "Failed to create block")?
@@ -161,12 +156,10 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::{BLOCK_SIZE, STRING_POOL_SIZE};
-
+    use crate::params::{BLOCK_SIZE, STRING_POOL_SIZE};
 
     #[test]
     fn prepare_dense() {
@@ -289,9 +282,7 @@ mod tests {
 
         let (data_stor, pool_stor) =
             Block::prepare_dense_pool_storage(&root, blockid, BLOCK_SIZE, STRING_POOL_SIZE)
-                .with_context(|_| {
-                    format!("Failed to prepare dense string storage")
-                })
+                .with_context(|_| format!("Failed to prepare dense string storage"))
                 .unwrap();
 
         assert_eq!(data_stor.file_path(), data_path);
@@ -319,5 +310,4 @@ mod tests {
             STRING_POOL_SIZE
         );
     }
-
 }

@@ -1,16 +1,11 @@
-extern crate hyena_engine;
-extern crate hyena_test;
-extern crate failure;
+use failure::ResultExt;
 
-use self::failure::ResultExt;
-
-use self::hyena_test::tempfile;
+use hyena_test::tempfile;
 
 // set `persistent_test_data` to make temp dirs persistent
-pub use self::tempfile::TempDir;
+pub use tempfile::TempDir;
 
 use hyena_engine::{Catalog, Result};
-
 
 const TEMPDIR_PREFIX: &str = "hyena-int-test";
 
@@ -63,7 +58,5 @@ pub fn get_columns(catalog: &Catalog) -> Vec<(usize, String)> {
 fn it_wraps_result() {
     // fake use of wrap_result macro
     // to prevent rustc from complaining about unused macro
-    wrap_result!({{
-
-    }})
+    wrap_result!({ {} })
 }

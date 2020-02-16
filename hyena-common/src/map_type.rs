@@ -1,6 +1,6 @@
-use std::ops::{Deref, DerefMut};
-use std::mem::{align_of, size_of};
 use std::marker::PhantomData;
+use std::mem::{align_of, size_of};
+use std::ops::{Deref, DerefMut};
 
 #[inline]
 pub fn map_type<'map, 'owner, D, M: Deref<Target = [D]>, T>(

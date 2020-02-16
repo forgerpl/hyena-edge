@@ -3,18 +3,11 @@
 ///
 /// More info at https://github.com/FCG-LLC/hyena-proto-test#hyena-generator.
 ///
-extern crate bincode;
-extern crate clap;
-extern crate hyena_api;
-extern crate hyena_engine;
-extern crate rand;
-extern crate uuid;
-extern crate nanomsg_multi_server;
-
 use bincode::{serialize, Infinite};
 use clap::{App, Arg, ArgMatches};
-use hyena_api::{Reply, ReplyColumn, RefreshCatalogResponse, PartitionInfo, Error, DataTriple,
-                ScanResultMessage};
+use hyena_api::{
+    DataTriple, Error, PartitionInfo, RefreshCatalogResponse, Reply, ReplyColumn, ScanResultMessage,
+};
 use hyena_engine::{BlockType, Fragment};
 use nanomsg_multi_server::proto::PeerReply;
 use rand::Rng;
@@ -35,7 +28,8 @@ struct Options {
 }
 
 fn match_args<F, T>(args: &ArgMatches, arg_name: &str, convert: F) -> Vec<T>
-    where F: Fn(&str) -> T
+where
+    F: Fn(&str) -> T,
 {
     match args.values_of(arg_name) {
         None => vec![],
@@ -44,30 +38,30 @@ fn match_args<F, T>(args: &ArgMatches, arg_name: &str, convert: F) -> Vec<T>
 }
 
 fn parse_error(args: &ArgMatches) -> Option<Error> {
-    args.value_of("error type").map(|type_string| match type_string {
-        "ColumnNameAlreadyExists" => {
-            Error::ColumnNameAlreadyExists(args.value_of("error param").unwrap().into())
-        }
-        "ColumnIdAlreadyExists" => {
-            Error::ColumnIdAlreadyExists(args.value_of("error param")
-                .unwrap()
-                .parse()
-                .unwrap())
-        }
-        "ColumnNameCannotBeEmpty" => Error::ColumnNameCannotBeEmpty,
-        "NoData" => Error::NoData(args.value_of("error param").unwrap().into()),
-        "InconsistentData" => Error::InconsistentData(args.value_of("error param").unwrap().into()),
-        "InvalidScanRequest" => {
-            Error::InvalidScanRequest(args.value_of("error param").unwrap().into())
-        }
-        "CatalogError" => Error::CatalogError(args.value_of("error param").unwrap().into()),
-        "ScanError" => Error::ScanError(args.value_of("error param").unwrap().into()),
-        "Unknown" => Error::Unknown(args.value_of("error param").unwrap().into()),
-        _ => {
-            println!("Unknown error type {}", type_string);
-            std::process::exit(1);
-        }
-    })
+    args.value_of("error type")
+        .map(|type_string| match type_string {
+            "ColumnNameAlreadyExists" => {
+                Error::ColumnNameAlreadyExists(args.value_of("error param").unwrap().into())
+            }
+            "ColumnIdAlreadyExists" => {
+                Error::ColumnIdAlreadyExists(args.value_of("error param").unwrap().parse().unwrap())
+            }
+            "ColumnNameCannotBeEmpty" => Error::ColumnNameCannotBeEmpty,
+            "NoData" => Error::NoData(args.value_of("error param").unwrap().into()),
+            "InconsistentData" => {
+                Error::InconsistentData(args.value_of("error param").unwrap().into())
+            }
+            "InvalidScanRequest" => {
+                Error::InvalidScanRequest(args.value_of("error param").unwrap().into())
+            }
+            "CatalogError" => Error::CatalogError(args.value_of("error param").unwrap().into()),
+            "ScanError" => Error::ScanError(args.value_of("error param").unwrap().into()),
+            "Unknown" => Error::Unknown(args.value_of("error param").unwrap().into()),
+            _ => {
+                println!("Unknown error type {}", type_string);
+                std::process::exit(1);
+            }
+        })
 }
 
 impl Options {
@@ -91,70 +85,92 @@ fn get_args() -> App<'static, 'static> {
         .version("0.1")
         .about("Generates serialized messages for automated protocol tests.")
         .set_term_width(100)
-        .arg(Arg::with_name("output")
-            .help("The file to put the serialized message to")
-            .short("o")
-            .long("output")
-            .takes_value(true)
-            .required(true))
-        .arg(Arg::with_name("command")
-            .help("The command")
-            .short("c")
-            .long("command")
-            .takes_value(true)
-            .possible_values(&["keepalive",
-                               "columns",
-                               "catalog",
-                               "addcolumn",
-                               "insert",
-                               "scan",
-                               "serializeerror"])
-            .required(true))
-        .arg(Arg::with_name("column name")
-            .help("Column name")
-            .short("n")
-            .long("column-name")
-            .takes_value(true)
-            .multiple(true))
-        .arg(Arg::with_name("column id")
-            .help("Column id")
-            .short("i")
-            .long("column-id")
-            .takes_value(true)
-            .multiple(true))
-        .arg(Arg::with_name("column type")
-            .help("Column type")
-            .short("t")
-            .long("column-type")
-            .takes_value(true)
-            .multiple(true))
-        .arg(Arg::with_name("column data")
-            .help("Number of data rows returned from scan for the column")
-            .short("d")
-            .long("column-data")
-            .takes_value(true)
-            .multiple(true))
-        .arg(Arg::with_name("partitions")
-            .help("Number of partitions")
-            .short("p")
-            .long("partition")
-            .takes_value(true)
-            .default_value("0"))
-        .arg(Arg::with_name("error type")
-            .help("Error type")
-            .short("e")
-            .long("error-type")
-            .takes_value(true))
-        .arg(Arg::with_name("error param")
-            .help("Error parameter")
-            .short("w")
-            .long("error-param")
-            .takes_value(true))
-        .arg(Arg::with_name("rows")
-            .help("Number of inserted rows")
-            .short("r")
-            .long("rows")
-            .takes_value(true))
+        .arg(
+            Arg::with_name("output")
+                .help("The file to put the serialized message to")
+                .short("o")
+                .long("output")
+                .takes_value(true)
+                .required(true),
+        )
+        .arg(
+            Arg::with_name("command")
+                .help("The command")
+                .short("c")
+                .long("command")
+                .takes_value(true)
+                .possible_values(&[
+                    "keepalive",
+                    "columns",
+                    "catalog",
+                    "addcolumn",
+                    "insert",
+                    "scan",
+                    "serializeerror",
+                ])
+                .required(true),
+        )
+        .arg(
+            Arg::with_name("column name")
+                .help("Column name")
+                .short("n")
+                .long("column-name")
+                .takes_value(true)
+                .multiple(true),
+        )
+        .arg(
+            Arg::with_name("column id")
+                .help("Column id")
+                .short("i")
+                .long("column-id")
+                .takes_value(true)
+                .multiple(true),
+        )
+        .arg(
+            Arg::with_name("column type")
+                .help("Column type")
+                .short("t")
+                .long("column-type")
+                .takes_value(true)
+                .multiple(true),
+        )
+        .arg(
+            Arg::with_name("column data")
+                .help("Number of data rows returned from scan for the column")
+                .short("d")
+                .long("column-data")
+                .takes_value(true)
+                .multiple(true),
+        )
+        .arg(
+            Arg::with_name("partitions")
+                .help("Number of partitions")
+                .short("p")
+                .long("partition")
+                .takes_value(true)
+                .default_value("0"),
+        )
+        .arg(
+            Arg::with_name("error type")
+                .help("Error type")
+                .short("e")
+                .long("error-type")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("error param")
+                .help("Error parameter")
+                .short("w")
+                .long("error-param")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("rows")
+                .help("Number of inserted rows")
+                .short("r")
+                .long("rows")
+                .takes_value(true),
+        )
 }
 
 fn write(filename: &String, data: &Vec<u8>) {
@@ -163,17 +179,19 @@ fn write(filename: &String, data: &Vec<u8>) {
 }
 
 fn verify_columns(options: &Options) {
-    if options.column_names.len() != options.column_ids.len() ||
-       options.column_names.len() != options.column_types.len() {
-        println!{"Number of -n, -i and -t options must be the same!"};
+    if options.column_names.len() != options.column_ids.len()
+        || options.column_names.len() != options.column_types.len()
+    {
+        println! {"Number of -n, -i and -t options must be the same!"};
         std::process::exit(1);
     }
 }
 
 fn verify_column_data(options: &Options) {
-    if options.column_data.len() != options.column_ids.len() ||
-       options.column_data.len() != options.column_types.len() {
-        println!{"Number of -d, -i and -t options must be the same!"};
+    if options.column_data.len() != options.column_ids.len()
+        || options.column_data.len() != options.column_types.len()
+    {
+        println! {"Number of -d, -i and -t options must be the same!"};
         std::process::exit(1);
     }
 }
@@ -188,9 +206,11 @@ fn gen_keepalive(options: Options) {
 fn gen_columns_vec(options: &Options) -> Vec<ReplyColumn> {
     (0..options.column_ids.len())
         .map(|index| {
-            ReplyColumn::new(options.column_types[index],
-                             options.column_ids[index],
-                             options.column_names[index].clone())
+            ReplyColumn::new(
+                options.column_types[index],
+                options.column_ids[index],
+                options.column_names[index].clone(),
+            )
         })
         .collect()
 }
@@ -213,10 +233,12 @@ fn gen_partition_vec(options: &Options) -> Vec<PartitionInfo> {
     (0..options.partitions)
         .map(|_| {
             let string_length = rng.gen_range(0, 1024);
-            PartitionInfo::new(rand::random(),
-                               rand::random(),
-                               Uuid::new_v4().into(),
-                               rng.gen_ascii_chars().take(string_length).collect())
+            PartitionInfo::new(
+                rand::random(),
+                rand::random(),
+                Uuid::new_v4().into(),
+                rng.gen_ascii_chars().take(string_length).collect(),
+            )
         })
         .collect()
 }
@@ -291,14 +313,18 @@ fn gen_vec<T: rand::Rand>(rows: usize) -> Vec<T> {
 }
 
 fn gen_string_vec(rows: usize) -> Vec<String> {
-    (0..rows).map(|_| {
-        let length: u8 = rand::thread_rng().gen();
-        rand::thread_rng().gen_ascii_chars().take(length as usize).collect::<String>()
-    }).collect()
+    (0..rows)
+        .map(|_| {
+            let length: u8 = rand::thread_rng().gen();
+            rand::thread_rng()
+                .gen_ascii_chars()
+                .take(length as usize)
+                .collect::<String>()
+        })
+        .collect()
 }
 
 fn gen_fragment(rows: usize, block_type: BlockType) -> Fragment {
-
     match block_type {
         BlockType::I8Dense => Fragment::I8Dense(gen_vec(rows)),
         BlockType::I16Dense => Fragment::I16Dense(gen_vec(rows)),
@@ -331,7 +357,10 @@ fn gen_scan_result(options: &Options) -> ScanResultMessage {
             let data = if options.column_data[index] == 0 {
                 None
             } else {
-                Some(gen_fragment(options.column_data[index], options.column_types[index]))
+                Some(gen_fragment(
+                    options.column_data[index],
+                    options.column_types[index],
+                ))
             };
 
             DataTriple::new(options.column_ids[index], options.column_types[index], data)

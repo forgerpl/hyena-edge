@@ -1,28 +1,31 @@
-use std::collections::HashSet as StdHashSet;
-use std::iter::FromIterator;
-use std::hash::Hash;
-use std::ops::{Deref, DerefMut};
 use super::hash::Hasher;
-
+use std::collections::HashSet as StdHashSet;
+use std::hash::Hash;
+use std::iter::FromIterator;
+use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HashSet<V: Hash + Eq>(StdHashSet<V, Hasher>);
 
-
 impl<V> HashSet<V>
-where V: Hash + Eq
+where
+    V: Hash + Eq,
 {
     pub fn new() -> HashSet<V> {
         HashSet::from(StdHashSet::with_hasher(Hasher::default()))
     }
 
     pub fn with_capacity(capacity: usize) -> HashSet<V> {
-        HashSet::from(StdHashSet::with_capacity_and_hasher(capacity, Hasher::default()))
+        HashSet::from(StdHashSet::with_capacity_and_hasher(
+            capacity,
+            Hasher::default(),
+        ))
     }
 }
 
 impl<V> From<StdHashSet<V, Hasher>> for HashSet<V>
-where V: Hash + Eq
+where
+    V: Hash + Eq,
 {
     fn from(source: StdHashSet<V, Hasher>) -> Self {
         HashSet(source)
@@ -30,7 +33,8 @@ where V: Hash + Eq
 }
 
 impl<V> Default for HashSet<V>
-where V: Hash + Eq
+where
+    V: Hash + Eq,
 {
     fn default() -> Self {
         Self::from(<StdHashSet<V, Hasher> as Default>::default())
@@ -38,7 +42,8 @@ where V: Hash + Eq
 }
 
 impl<V> FromIterator<V> for HashSet<V>
-where V: Hash + Eq
+where
+    V: Hash + Eq,
 {
     fn from_iter<I: IntoIterator<Item = V>>(iter: I) -> Self {
         Self::from(<StdHashSet<V, Hasher> as FromIterator<V>>::from_iter(iter))
@@ -46,7 +51,8 @@ where V: Hash + Eq
 }
 
 impl<V> IntoIterator for HashSet<V>
-where V: Hash + Eq
+where
+    V: Hash + Eq,
 {
     type Item = <StdHashSet<V, Hasher> as IntoIterator>::Item;
     type IntoIter = <StdHashSet<V, Hasher> as IntoIterator>::IntoIter;
@@ -57,7 +63,8 @@ where V: Hash + Eq
 }
 
 impl<'a, V> IntoIterator for &'a HashSet<V>
-where V: Hash + Eq
+where
+    V: Hash + Eq,
 {
     type Item = <&'a StdHashSet<V, Hasher> as IntoIterator>::Item;
     type IntoIter = <&'a StdHashSet<V, Hasher> as IntoIterator>::IntoIter;
@@ -68,7 +75,8 @@ where V: Hash + Eq
 }
 
 impl<V> Deref for HashSet<V>
-where V: Hash + Eq
+where
+    V: Hash + Eq,
 {
     type Target = StdHashSet<V, Hasher>;
 
@@ -78,7 +86,8 @@ where V: Hash + Eq
 }
 
 impl<V> DerefMut for HashSet<V>
-where V: Hash + Eq
+where
+    V: Hash + Eq,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -90,26 +99,20 @@ mod tests {
     #[cfg(all(feature = "nightly", test))]
     mod benches {
         use super::super::*;
-        use test::{Bencher, black_box};
+        use test::{black_box, Bencher};
 
         fn data(count: usize, distance: usize) -> Vec<usize> {
-            (0..count)
-                .map(|v| v * distance)
-                .collect()
+            (0..count).map(|v| v * distance).collect()
         }
 
         #[inline]
         fn single_impl<H>(b: &mut Bencher, count: usize, distance: usize)
-        where H: FromIterator<usize>
+        where
+            H: FromIterator<usize>,
         {
             let d = data(count, distance);
 
-            b.iter(||
-                black_box(d
-                    .iter()
-                    .cloned()
-                    .collect::<H>())
-            )
+            b.iter(|| black_box(d.iter().cloned().collect::<H>()))
         }
 
         macro_rules! hset_bench_impl {
@@ -150,10 +153,18 @@ mod tests {
         }
 
         hset_bench_impl!(
-            single_100, 100, 1,
-            single_10_000, 10_000, 4,
-            single_100_000, 100_000, 12,
-            single_1_000_000, 1_000_000, 24,
+            single_100,
+            100,
+            1,
+            single_10_000,
+            10_000,
+            4,
+            single_100_000,
+            100_000,
+            12,
+            single_1_000_000,
+            1_000_000,
+            24,
         );
     }
 }

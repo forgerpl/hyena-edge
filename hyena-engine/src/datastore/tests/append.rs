@@ -1,6 +1,6 @@
 use super::*;
-use ty::fragment::Fragment;
-use block::ColumnIndexType;
+use crate::block::ColumnIndexType;
+use crate::ty::fragment::Fragment;
 
 pub(crate) const DEFAULT_PARTITION_GROUPS: [SourceId; 3] = [1, 5, 7];
 
@@ -20,7 +20,7 @@ macro_rules! append_test_impl {
     (init $partition_groups: expr, $columns: expr, $ts_min: expr) => {
         append_test_impl!(init $partition_groups,
             $columns,
-            ::ty::ColumnIndexStorageMap::default(),
+            crate::ty::ColumnIndexStorageMap::default(),
             $ts_min)
     };
 
@@ -98,7 +98,7 @@ macro_rules! append_test_impl {
             $source_id: expr
             $(,)*
         ]),+ $(,)*) => {{
-        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+        use crate::datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
         append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $indexes, $now, $([
             $ts,
@@ -115,7 +115,7 @@ macro_rules! append_test_impl {
             $source_id: expr
             $(,)*
         ]),+ $(,)*) => {{
-        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+        use crate::datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
         append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $now, $([
             $ts,
@@ -134,7 +134,7 @@ macro_rules! append_test_impl {
             $(,)*
         ]),+ $(,)*) => {
 
-        append_test_impl!($partition_groups, $schema, ::ty::ColumnIndexStorageMap::default(),
+        append_test_impl!($partition_groups, $schema, crate::ty::ColumnIndexStorageMap::default(),
         $now,
         $([
             $ts,
@@ -191,7 +191,7 @@ macro_rules! append_test_impl {
             $(,)*
         ]),+ $(,)*) => {{
 
-        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+        use crate::datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
         append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $now, $expected_partitions, $([
             $ts,
@@ -215,7 +215,7 @@ macro_rules! append_test_impl {
             $(,)*
         ]),+ $(,)*) => {{
 
-        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+        use crate::datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
         append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $indexes, $now,
             $expected_partitions, $([
@@ -238,7 +238,7 @@ macro_rules! append_test_impl {
             $(,)*
         ]),+ $(,)*) => {
 
-        append_test_impl!($partition_groups, $schema, ::ty::ColumnIndexStorageMap::default(), $now,
+        append_test_impl!($partition_groups, $schema, crate::ty::ColumnIndexStorageMap::default(), $now,
             $expected_partitions, $([
             $ts,
             $ts_count,
@@ -261,11 +261,11 @@ macro_rules! append_test_impl {
         ]),+ $(,)*) => {{
 
         #[allow(unused)]
-        use block::BlockType as BlockTy;
-        use ty::block::BlockId;
+        use crate::block::BlockType as BlockTy;
+        use crate::ty::block::BlockId;
         use hyena_test::tempfile::TempDirExt;
-        use params::PARTITION_METADATA;
-        use ty::fragment::Fragment::*;
+        use crate::params::PARTITION_METADATA;
+        use crate::ty::fragment::Fragment::*;
         use std::mem::transmute;
         use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator,
             ParallelIterator};
@@ -383,7 +383,7 @@ macro_rules! append_test_impl {
 
             // assert column index blocks
             indexes.par_iter().for_each(|(id, ty)| {
-                use ty::ColumnIndexStorage::Memmap;
+                use crate::ty::ColumnIndexStorage::Memmap;
 
                 if block_data.contains_key(&id) {
                     match ty {
@@ -416,7 +416,7 @@ macro_rules! append_test_impl {
                         let col = columns.get(&id).unwrap();
 
                         if (*col).is_pooled() {
-                            use block::RelativeSlice;
+                            use crate::block::RelativeSlice;
 
                             let expected_data = if let Fragment::StringDense(ref sblk) = *frag {
                                 // assert data slice
@@ -535,8 +535,8 @@ macro_rules! append_test_impl {
 
 #[cfg(all(feature = "nightly", test))]
 mod benches {
-    use test::Bencher;
     use super::*;
+    use test::Bencher;
 
     #[bench]
     fn tiny(b: &mut Bencher) {
@@ -556,7 +556,6 @@ mod benches {
             2 => random!(gen u8, record_count).into(),
             3 => random!(gen u32, record_count).into(),
         };
-
 
         let init = append_test_impl!(init columns);
 
@@ -626,7 +625,7 @@ mod benches {
             1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
         };
 
-        let mut data = hashmap!{};
+        let mut data = hashmap! {};
 
         for idx in 2..column_count {
             columns.insert(
@@ -672,7 +671,6 @@ mod benches {
             2 => random!(gen u8, record_count).into(),
             3 => random!(gen u32, record_count).into(),
         };
-
 
         let init = append_test_impl!(init columns);
 
@@ -736,8 +734,6 @@ mod benches {
         use ty::block::BlockStorage::Memmap;
         use ty::index::ColumnIndexStorage;
 
-
-
         let record_count = 100;
         let text_length = 120;
 
@@ -768,9 +764,12 @@ mod benches {
 
         let mut cat = init.1;
 
-        cat.ensure_indexes(hashmap! {
-            3 => ColumnIndexStorage::Memmap(ColumnIndexType::Bloom),
-        }.into())
+        cat.ensure_indexes(
+            hashmap! {
+                3 => ColumnIndexStorage::Memmap(ColumnIndexType::Bloom),
+            }
+            .into(),
+        )
         .with_context(|_| "ensure index failed")
         .unwrap();
 
@@ -782,8 +781,8 @@ mod benches {
 #[should_panic(expected = "Provided Append contains no data")]
 fn empty() {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
-    use block::BlockType as BlockTy;
+    use crate::block::BlockType as BlockTy;
+    use crate::ty::block::BlockStorage::Memmap;
 
     let now = <Timestamp as Default>::default();
 
@@ -794,7 +793,6 @@ fn empty() {
         },
         now
     );
-
 
     let append = Append {
         ts: Default::default(),
@@ -807,7 +805,7 @@ fn empty() {
 
 mod dense {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
+    use crate::ty::block::BlockStorage::Memmap;
 
     #[test]
     fn ts_only() {
@@ -829,7 +827,7 @@ mod dense {
             },
             now,
             vec![expected],
-            [v.into(), record_count, hashmap!{}, hashmap!{}]
+            [v.into(), record_count, hashmap! {}, hashmap! {}]
         );
     }
 
@@ -984,7 +982,7 @@ mod dense {
                 2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS, MAX_RECORDS)),
                 3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS, MAX_RECORDS)),
             },
-            hashmap!{},
+            hashmap! {},
         ];
 
         append_test_impl!(
@@ -1025,15 +1023,13 @@ mod dense {
             3 => Fragment::from(seqfill!(vec u32, record_count)),
         };
 
-        let expected = vec![
-            hashmap! {
-                0 => <Fragment as From<Vec<Timestamp>>>::from(
-                    merge_iter!(v_1.clone().into_iter(), v_2.clone().into_iter())
-                ),
-                2 => Fragment::from(multiply_vec!(seqfill!(vec u8, record_count), 2)),
-                3 => Fragment::from(multiply_vec!(seqfill!(vec u32, record_count), 2)),
-            },
-        ];
+        let expected = vec![hashmap! {
+            0 => <Fragment as From<Vec<Timestamp>>>::from(
+                merge_iter!(v_1.clone().into_iter(), v_2.clone().into_iter())
+            ),
+            2 => Fragment::from(multiply_vec!(seqfill!(vec u8, record_count), 2)),
+            3 => Fragment::from(multiply_vec!(seqfill!(vec u32, record_count), 2)),
+        }];
 
         append_test_impl!(
             hashmap! {
@@ -1321,7 +1317,7 @@ mod dense {
 
     #[test]
     fn u32_10k_columns() {
-        use block::BlockType as BlockTy;
+        use crate::block::BlockType as BlockTy;
 
         let now = <Timestamp as Default>::default();
 
@@ -1336,11 +1332,11 @@ mod dense {
             1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
         };
 
-        let mut data = hashmap!{};
+        let mut data = hashmap! {};
         let mut expected = hashmap! {
             0 => Fragment::from(v.clone()),
         };
-        let mut counts = hashmap!{};
+        let mut counts = hashmap! {};
 
         for idx in 2..column_count {
             columns.insert(
@@ -1369,7 +1365,7 @@ mod dense {
         use super::*;
 
         fn test_impl(partitions: usize, even: bool) {
-            use block::BlockType;
+            use crate::block::BlockType;
 
             let now = 1;
 
@@ -1382,23 +1378,21 @@ mod dense {
                 0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
             };
 
-            let expected = v.chunks(MAX_RECORDS).map(|chunk| {
-                hashmap! {
-                    0 => Fragment::from(chunk.to_vec())
-                }
-            }).collect::<Vec<_>>();
+            let expected = v
+                .chunks(MAX_RECORDS)
+                .map(|chunk| {
+                    hashmap! {
+                        0 => Fragment::from(chunk.to_vec())
+                    }
+                })
+                .collect::<Vec<_>>();
 
             append_test_impl!(
                 vec![1],
                 schema,
                 now,
                 expected,
-                [
-                    v.into(),
-                    record_count,
-                    hashmap! {},
-                    hashmap! {},
-                ]
+                [v.into(), record_count, hashmap! {}, hashmap! {},]
             );
         }
 
@@ -1436,7 +1430,7 @@ mod dense {
 
 mod sparse {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
+    use crate::ty::block::BlockStorage::Memmap;
 
     #[test]
     fn current_only() {
@@ -1702,15 +1696,14 @@ mod sparse {
 
 mod string {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
-
+    use crate::ty::block::BlockStorage::Memmap;
 
     mod dense {
         use super::*;
 
         mod indexed {
             use super::*;
-            use ty::ColumnIndexStorage::Memmap as MemmapIndex;
+            use crate::ty::ColumnIndexStorage::Memmap as MemmapIndex;
 
             #[test]
             fn current_only() {
@@ -1870,13 +1863,12 @@ mod string {
                 ]
             );
         }
-
     }
 }
 
 mod layout {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
+    use crate::ty::block::BlockStorage::Memmap;
 
     // first empty, non-full write (single partition output)
     // 100 = [100]
@@ -1902,12 +1894,7 @@ mod layout {
             },
             now,
             vec![expected],
-            [
-                v.into(),
-                record_count,
-                hashmap! {},
-                data
-            ]
+            [v.into(), record_count, hashmap! {}, data]
         );
     }
 
@@ -1939,14 +1926,8 @@ mod layout {
             // in this case we should be left with fully written partition
             // and a completely empty one
             vec![expected, expected_empty],
-            [
-                v.into(),
-                record_count,
-                hashmap! {},
-                data
-            ]
+            [v.into(), record_count, hashmap! {}, data]
         );
-
     }
 
     // first empty, full write (single partition output)
@@ -1975,14 +1956,8 @@ mod layout {
             },
             now,
             vec![expected1, expected2],
-            [
-                v.into(),
-                record_count,
-                hashmap! {},
-                data
-            ]
+            [v.into(), record_count, hashmap! {}, data]
         );
-
     }
 
     // first with data, non-full write (single partition output)
@@ -2009,18 +1984,8 @@ mod layout {
             },
             now,
             vec![expected],
-            [
-                v.clone().into(),
-                record_count,
-                hashmap! {},
-                data.clone()
-            ],
-            [
-                v.into(),
-                record_count,
-                hashmap! {},
-                data
-            ]
+            [v.clone().into(), record_count, hashmap! {}, data.clone()],
+            [v.into(), record_count, hashmap! {}, data]
         );
     }
 
@@ -2059,18 +2024,8 @@ mod layout {
             // in this case we should be left with fully written partition
             // and a completely empty one
             vec![expected, expected_empty],
-            [
-                v1.into(),
-                record_count_1,
-                hashmap! {},
-                data.clone()
-            ],
-            [
-                v2.into(),
-                record_count_2,
-                hashmap! {},
-                data
-            ]
+            [v1.into(), record_count_1, hashmap! {}, data.clone()],
+            [v2.into(), record_count_2, hashmap! {}, data]
         );
     }
 
@@ -2095,11 +2050,20 @@ mod layout {
         let mut expected1 = data.clone();
         let mut expected2 = data.clone();
 
-        expected1.insert(0, Fragment::from({
-            v1.iter().chain(v2[..MAX_RECORDS - record_count_1].iter()).cloned().collect::<Vec<_>>()
-        }));
+        expected1.insert(
+            0,
+            Fragment::from({
+                v1.iter()
+                    .chain(v2[..MAX_RECORDS - record_count_1].iter())
+                    .cloned()
+                    .collect::<Vec<_>>()
+            }),
+        );
 
-        expected2.insert(0, Fragment::from(v2[MAX_RECORDS - record_count_1..].to_vec()));
+        expected2.insert(
+            0,
+            Fragment::from(v2[MAX_RECORDS - record_count_1..].to_vec()),
+        );
 
         append_test_impl!(
             vec![1],
@@ -2108,18 +2072,8 @@ mod layout {
             },
             now,
             vec![expected1, expected2],
-            [
-                v1.into(),
-                record_count_1,
-                hashmap! {},
-                data.clone()
-            ],
-            [
-                v2.into(),
-                record_count_2,
-                hashmap! {},
-                data
-            ]
+            [v1.into(), record_count_1, hashmap! {}, data.clone()],
+            [v2.into(), record_count_2, hashmap! {}, data]
         );
     }
 }

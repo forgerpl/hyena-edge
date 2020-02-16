@@ -1,5 +1,5 @@
-use std::iter::{Peekable, Enumerate};
-use block::SparseIndex;
+use crate::block::SparseIndex;
+use std::iter::{Enumerate, Peekable};
 
 /// Iterator for sparse blocks / sparse fragments
 ///
@@ -41,15 +41,11 @@ impl<'data, D: 'data, I: Iterator<Item = SparseIndex>> SparseIterator for Sparse
                 if idx < index {
                     // try further
                     self.index.next();
-                }
-                else if idx == index {
+                } else if idx == index {
                     // hit
                     let (row, idx) = self.index.next().unwrap();
 
-                    break Some(Some((
-                        self.data_by_row(row),
-                        idx
-                    )));
+                    break Some(Some((self.data_by_row(row), idx)));
                 } else {
                     // too far, stop
                     break Some(None);
@@ -71,7 +67,8 @@ impl<'data, D: 'data, I: Iterator<Item = SparseIndex>> SparseIter<'data, D, I> {
 
     #[inline]
     fn data_by_row(&self, row: usize) -> &'data D {
-        self.data.get(row)
+        self.data
+            .get(row)
             .expect("invalid index length for data slice")
     }
 }
@@ -82,10 +79,7 @@ impl<'data, D: 'data, I: Iterator<Item = SparseIndex>> Iterator for SparseIter<'
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((row, idx)) = self.index.next() {
-            Some((
-                self.data_by_row(row),
-                idx
-            ))
+            Some((self.data_by_row(row), idx))
         } else {
             None
         }

@@ -1,13 +1,11 @@
-use error::*;
+use crate::error::*;
 use std::fmt::Debug;
 
-
+pub(crate) mod memory;
 #[cfg(feature = "mmap")]
 pub(crate) mod mmap;
-pub(crate) mod memory;
 
 pub(crate) mod manager;
-
 
 pub trait Storage<'stor, T: 'stor>: AsRef<[T]> + AsMut<[T]> + Debug {
     fn sync(&mut self) -> Result<()>;
@@ -39,7 +37,6 @@ pub trait Realloc: Sized {
     /// Realloc (grow/shrink) the storage
     fn realloc(self, size: usize) -> Result<Self>;
 
-    #[inline]
     fn realloc_size(&self) -> usize;
 
     /// Realloc to ensure that `size` will fit

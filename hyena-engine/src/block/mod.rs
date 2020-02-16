@@ -1,41 +1,35 @@
-use error::*;
-use std::fmt::Debug;
+use crate::error::*;
 use extprim::u128::u128;
+use std::fmt::Debug;
 
 #[macro_use]
 mod macros;
-mod numeric;
-mod string;
-mod relative;
 pub(crate) mod index;
+mod numeric;
+mod relative;
+mod string;
 
-pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};
-pub(crate) use self::string::DenseStringBlock;
-pub use self::numeric::SparseIndex;
-pub(crate) use self::relative::RelativeSlice;
 pub use self::index::ColumnIndexType;
-
+pub use self::numeric::SparseIndex;
+pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};
+pub(crate) use self::relative::RelativeSlice;
+pub(crate) use self::string::DenseStringBlock;
 
 // This will probably get merged into BlockData
 
 pub trait BufferHead {
-    #[inline]
     fn head(&self) -> usize;
 
-    #[inline]
     fn mut_head(&mut self) -> &mut usize;
 
-    #[inline]
     fn pool_head(&self) -> Option<usize> {
         None
     }
 
-    #[inline]
     fn set_pool_head(&mut self, _head: usize) {
         unimplemented!()
     }
 
-    #[inline]
     fn is_pooled(&self) -> bool {
         self.pool_head().is_some()
     }
@@ -56,7 +50,6 @@ where
 }
 
 pub(crate) trait SliceOffset {
-
     fn len(&self) -> usize;
 
     fn is_empty(&self) -> bool {
@@ -65,9 +58,7 @@ pub(crate) trait SliceOffset {
 
     fn to_slice<'buffer, T>(&self, buffer: &'buffer [T]) -> &'buffer [T];
     fn to_str<'buffer>(&self, buffer: &'buffer [u8]) -> &'buffer str;
-
 }
-
 
 /// Base trait for all Blocks
 ///
@@ -76,9 +67,9 @@ pub(crate) trait SliceOffset {
 /// This adds some overhead, but will serve as a good basis for refactoring
 /// and comparisons in benchmarks
 
-pub trait BlockData<'block, T: 'block, I: 'block>
-    : BufferHead + AsRef<[T]> + AsMut<[T]> + IndexRef<[I]> + IndexMut<[I]> + Debug
-    {
+pub trait BlockData<'block, T: 'block, I: 'block>:
+    BufferHead + AsRef<[T]> + AsMut<[T]> + IndexRef<[I]> + IndexMut<[I]> + Debug
+{
     // data only
 
     #[inline]
@@ -233,8 +224,8 @@ pub enum BlockType {
 impl BlockType {
     #[inline]
     pub fn size_of(&self) -> usize {
-        use std::mem::size_of;
         use self::BlockType::*;
+        use std::mem::size_of;
 
         match *self {
             I8Dense | U8Dense | I8Sparse | U8Sparse => size_of::<u8>(),
@@ -251,18 +242,15 @@ impl BlockType {
         use self::BlockType::*;
 
         match *self {
-            I8Dense | U8Dense |
-            I16Dense | U16Dense |
-            I32Dense | U32Dense |
-            I64Dense | U64Dense => false,
+            I8Dense | U8Dense | I16Dense | U16Dense | I32Dense | U32Dense | I64Dense | U64Dense => {
+                false
+            }
             I128Dense | U128Dense => false,
 
             StringDense => false,
 
-            I8Sparse | U8Sparse |
-            I16Sparse | U16Sparse |
-            I32Sparse | U32Sparse |
-            I64Sparse | U64Sparse  => true,
+            I8Sparse | U8Sparse | I16Sparse | U16Sparse | I32Sparse | U32Sparse | I64Sparse
+            | U64Sparse => true,
             I128Sparse | U128Sparse => true,
         }
     }
@@ -272,18 +260,15 @@ impl BlockType {
         use self::BlockType::*;
 
         match *self {
-            I8Dense | U8Dense |
-            I16Dense | U16Dense |
-            I32Dense | U32Dense |
-            I64Dense | U64Dense => false,
+            I8Dense | U8Dense | I16Dense | U16Dense | I32Dense | U32Dense | I64Dense | U64Dense => {
+                false
+            }
             I128Dense | U128Dense => false,
 
             StringDense => true,
 
-            I8Sparse | U8Sparse |
-            I16Sparse | U16Sparse |
-            I32Sparse | U32Sparse |
-            I64Sparse | U64Sparse  => false,
+            I8Sparse | U8Sparse | I16Sparse | U16Sparse | I32Sparse | U32Sparse | I64Sparse
+            | U64Sparse => false,
             I128Sparse | U128Sparse => false,
         }
     }

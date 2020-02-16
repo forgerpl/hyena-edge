@@ -1,7 +1,8 @@
 #[macro_export]
 macro_rules! assert_file_size {
     ($file: expr, $size: expr) => {{
-        let metadata = $file.metadata()
+        let metadata = $file
+            .metadata()
             .with_context(|_| "failed to retrieve metadata")
             .unwrap();
 
@@ -29,9 +30,8 @@ macro_rules! assert_variant {
 #[macro_export]
 macro_rules! ensure_read {
     ($file: expr, $buf: expr, $size: expr, $existing_size: expr) => {{
-        use fs::ensure_file;
+        use crate::fs::ensure_file;
         use std::io::Read;
-
 
         let mut buf = $buf;
         let mut file = ensure_file(&$file, $size, $existing_size)
@@ -52,9 +52,8 @@ macro_rules! ensure_read {
 #[macro_export]
 macro_rules! ensure_write {
     ($file: expr, $w: expr, $size: expr, $existing_size: expr) => {{
-        use fs::ensure_file;
+        use crate::fs::ensure_file;
         use std::io::Write;
-
 
         let mut file = ensure_file(&$file, $size, $existing_size)
             .with_context(|_| "unable to create file")

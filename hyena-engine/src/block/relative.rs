@@ -1,6 +1,6 @@
+use crate::block::SliceOffset;
 use std::slice::from_raw_parts;
 use std::str::from_utf8_unchecked;
-use block::SliceOffset;
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RelativeSlice {
@@ -36,7 +36,6 @@ impl RelativeSlice {
 }
 
 impl SliceOffset for RelativeSlice {
-
     fn is_empty(&self) -> bool {
         self.length == 0
     }
@@ -64,5 +63,4 @@ impl SliceOffset for RelativeSlice {
         // in case of SIGSEGV during string operations, start looking here
         unsafe { self.to_str_ptr(buffer.as_ptr()) }
     }
-
 }

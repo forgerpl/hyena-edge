@@ -1,13 +1,14 @@
-use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column,
-                   Fragment, Result, Scan, ScanFilter, ScanFilterOp, SparseIndex, Timestamp,
-                   TimestampFragment, StreamConfig};
+use hyena_engine::{
+    Append, BlockData, BlockStorage, BlockType, Catalog, Column, Fragment, Result, Scan,
+    ScanFilter, ScanFilterOp, SparseIndex, StreamConfig, Timestamp, TimestampFragment,
+};
 
-use std::iter::repeat;
 use hyena_common::collections::HashMap;
+use std::iter::repeat;
 
 use criterion::Criterion;
 
-use config::{catalog_dir, TempDir};
+use crate::config::{catalog_dir, TempDir};
 
 //  ID |   Name    |        Type
 // ----+-----------+---------------------
@@ -23,8 +24,11 @@ const DENSE2_COLUMN: usize = 3;
 const SPARSE1_COLUMN: usize = 4;
 const SPARSE2_COLUMN: usize = 5;
 
-fn create_append_data(now: Timestamp, record_count: usize, fill_ratio: u32) ->
-(TimestampFragment, BlockData) {
+fn create_append_data(
+    now: Timestamp,
+    record_count: usize,
+    fill_ratio: u32,
+) -> (TimestampFragment, BlockData) {
     let tsfrag = TimestampFragment::from(
         repeat(())
             .take(record_count)
@@ -118,217 +122,229 @@ fn prepare_data<'cat>(record_count: usize) -> Result<(Timestamp, TempDir, Catalo
 }
 
 fn filter_dense_bench(c: &mut Criterion) {
-    c.bench_function_over_inputs("filter numeric dense", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "filter numeric dense",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    DENSE1_COLUMN,
-                    vec![
-                        vec![
+                    filters.insert(
+                        DENSE1_COLUMN,
+                        vec![vec![
                             ScanFilter::U64(ScanFilterOp::Gt(size as u64 / 6)),
                             ScanFilter::U64(ScanFilterOp::LtEq(size as u64 / 6 * 4)),
-                        ]
-                    ],
-                );
+                        ]],
+                    );
 
-                Some(filters)
-            },
-            Some(vec![]),
-            None,
-            None,
-            None,
-            None,
-        );
+                    Some(filters)
+                },
+                Some(vec![]),
+                None,
+                None,
+                None,
+                None,
+            );
 
-        b.iter(move || {
-            cat.scan(&scan).unwrap();
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+            b.iter(move || {
+                cat.scan(&scan).unwrap();
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 fn filter_materialize_dense_bench(c: &mut Criterion) {
-    c.bench_function_over_inputs("filter and materialize numeric dense", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "filter and materialize numeric dense",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    DENSE1_COLUMN,
-                    vec![
-                        vec![
+                    filters.insert(
+                        DENSE1_COLUMN,
+                        vec![vec![
                             ScanFilter::U64(ScanFilterOp::Gt(size as u64 / 6)),
                             ScanFilter::U64(ScanFilterOp::LtEq(size as u64 / 6 * 4)),
-                        ]
-                    ],
-                );
+                        ]],
+                    );
 
-                Some(filters)
-            },
-            Some(vec![DENSE1_COLUMN, DENSE2_COLUMN]),
-            None,
-            None,
-            None,
-            None,
-        );
+                    Some(filters)
+                },
+                Some(vec![DENSE1_COLUMN, DENSE2_COLUMN]),
+                None,
+                None,
+                None,
+                None,
+            );
 
-        b.iter(move || {
-            cat.scan(&scan).unwrap();
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+            b.iter(move || {
+                cat.scan(&scan).unwrap();
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 fn filter_materialize_stream_dense_bench(c: &mut Criterion) {
     const STREAM_ROW_LIMIT: usize = 131072;
     const STREAM_THRESHOLD: usize = 1_000;
 
-    c.bench_function_over_inputs("streaming filter and materialize numeric dense", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "streaming filter and materialize numeric dense",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    2,
-                    vec![
-                        vec![
+                    filters.insert(
+                        2,
+                        vec![vec![
                             ScanFilter::U64(ScanFilterOp::Gt(size as u64 / 6)),
                             ScanFilter::U64(ScanFilterOp::LtEq(size as u64 / 6 * 4)),
-                        ]
-                    ],
-                );
+                        ]],
+                    );
 
-                Some(filters)
-            },
-            Some(vec![2, 3]),
-            None,
-            None,
-            None,
-            Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
-        );
+                    Some(filters)
+                },
+                Some(vec![2, 3]),
+                None,
+                None,
+                None,
+                Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
+            );
 
-        b.iter(move || {
-            let mut scan = scan.clone();
+            b.iter(move || {
+                let mut scan = scan.clone();
 
-            while {
-                let result = cat.scan(&scan).unwrap();
-                scan.set_stream_state(result.stream_state_data()).unwrap()
-            } {};
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+                while {
+                    let result = cat.scan(&scan).unwrap();
+                    scan.set_stream_state(result.stream_state_data()).unwrap()
+                } {}
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 fn filter_sparse_bench(c: &mut Criterion) {
-    c.bench_function_over_inputs("filter numeric sparse", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "filter numeric sparse",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    SPARSE1_COLUMN,
-                    vec![
-                        vec![
+                    filters.insert(
+                        SPARSE1_COLUMN,
+                        vec![vec![
                             ScanFilter::U64(ScanFilterOp::Gt(size as u64 / 6)),
                             ScanFilter::U64(ScanFilterOp::LtEq(size as u64 / 6 * 4)),
-                        ]
-                    ],
-                );
+                        ]],
+                    );
 
-                Some(filters)
-            },
-            Some(vec![]),
-            None,
-            None,
-            None,
-            None,
-        );
+                    Some(filters)
+                },
+                Some(vec![]),
+                None,
+                None,
+                None,
+                None,
+            );
 
-        b.iter(move || {
-            cat.scan(&scan).unwrap();
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+            b.iter(move || {
+                cat.scan(&scan).unwrap();
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 fn filter_materialize_sparse_bench(c: &mut Criterion) {
-    c.bench_function_over_inputs("filter and materialize numeric sparse", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "filter and materialize numeric sparse",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    SPARSE1_COLUMN,
-                    vec![
-                        vec![
+                    filters.insert(
+                        SPARSE1_COLUMN,
+                        vec![vec![
                             ScanFilter::U64(ScanFilterOp::Gt(size as u64 / 6)),
                             ScanFilter::U64(ScanFilterOp::LtEq(size as u64 / 6 * 4)),
-                        ]
-                    ],
-                );
+                        ]],
+                    );
 
-                Some(filters)
-            },
-            Some(vec![SPARSE1_COLUMN, SPARSE2_COLUMN]),
-            None,
-            None,
-            None,
-            None,
-        );
+                    Some(filters)
+                },
+                Some(vec![SPARSE1_COLUMN, SPARSE2_COLUMN]),
+                None,
+                None,
+                None,
+                None,
+            );
 
-        b.iter(move || {
-            cat.scan(&scan).unwrap();
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+            b.iter(move || {
+                cat.scan(&scan).unwrap();
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 fn filter_materialize_stream_sparse_bench(c: &mut Criterion) {
     const STREAM_ROW_LIMIT: usize = 131072;
     const STREAM_THRESHOLD: usize = 1_000;
 
-    c.bench_function_over_inputs("streaming filter and materialize numeric sparse", |b, &&size| {
-        let (_now, _dir, cat) = prepare_data(size).unwrap();
+    c.bench_function_over_inputs(
+        "streaming filter and materialize numeric sparse",
+        |b, &&size| {
+            let (_now, _dir, cat) = prepare_data(size).unwrap();
 
-        let scan = Scan::new(
-            {
-                let mut filters = HashMap::new();
+            let scan = Scan::new(
+                {
+                    let mut filters = HashMap::new();
 
-                filters.insert(
-                    4,
-                    vec![
-                        vec![
+                    filters.insert(
+                        4,
+                        vec![vec![
                             ScanFilter::U64(ScanFilterOp::Gt(size as u64 / 6)),
                             ScanFilter::U64(ScanFilterOp::LtEq(size as u64 / 6 * 4)),
-                        ]
-                    ],
-                );
+                        ]],
+                    );
 
-                Some(filters)
-            },
-            Some(vec![4, 5]),
-            None,
-            None,
-            None,
-            Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
-        );
+                    Some(filters)
+                },
+                Some(vec![4, 5]),
+                None,
+                None,
+                None,
+                Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
+            );
 
-        b.iter(move || {
-            let mut scan = scan.clone();
+            b.iter(move || {
+                let mut scan = scan.clone();
 
-            while {
-                let result = cat.scan(&scan).unwrap();
-                scan.set_stream_state(result.stream_state_data()).unwrap()
-            } {};
-        })
-    }, &[10_000, 100_000, 500_000, 1_000_000]);
+                while {
+                    let result = cat.scan(&scan).unwrap();
+                    scan.set_stream_state(result.stream_state_data()).unwrap()
+                } {}
+            })
+        },
+        &[10_000, 100_000, 500_000, 1_000_000],
+    );
 }
 
 criterion_group!(

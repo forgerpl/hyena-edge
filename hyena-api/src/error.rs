@@ -1,1 +1,1 @@
-pub use failure::{Fail, Error, ResultExt, err_msg};
+pub use failure::{err_msg, Error, Fail, ResultExt};

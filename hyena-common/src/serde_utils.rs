@@ -1,8 +1,8 @@
+use crate::error::*;
 use bincode;
-use error::*;
 
-pub use self::ser::{serialize, serialize_into};
 pub use self::de::{deserialize, deserialize_from};
+pub use self::ser::{serialize, serialize_into};
 
 pub(crate) mod ser {
     use super::*;
@@ -31,8 +31,8 @@ pub(crate) mod ser {
 
 pub(crate) mod de {
     use super::*;
-    use std::io::Read;
     use serde::Deserialize;
+    use std::io::Read;
 
     pub fn deserialize<'de, T>(data: &'de [u8]) -> Result<T>
     where
@@ -57,8 +57,8 @@ pub(crate) mod de {
 #[macro_export]
 macro_rules! deserialize {
     (file $name: expr, $T: ty) => {{
-        use $crate::serde_utils::deserialize_from;
         use std::fs::File;
+        use $crate::serde_utils::deserialize_from;
 
         let mut file = File::open($name)
             .with_context(|_| format!("Failed to open file {:?} for deserialization", $name))?;
@@ -67,8 +67,8 @@ macro_rules! deserialize {
     }};
 
     (file $name: expr) => {{
-        use $crate::serde_utils::deserialize_from;
         use std::fs::File;
+        use $crate::serde_utils::deserialize_from;
 
         let mut file = File::open($name)
             .with_context(|_| format!("Failed to open file {:?} for deserialization", $name))?;
@@ -91,14 +91,13 @@ macro_rules! deserialize {
 
         deserialize(&mut buf)
     }};
-
 }
 
 #[macro_export]
 macro_rules! serialize {
     (file $name: expr, $value: expr) => {{
-        use $crate::serde_utils::serialize_into;
         use std::fs::File;
+        use $crate::serde_utils::serialize_into;
 
         let mut file = File::create($name)
             .with_context(|_| format!("Failed to open file {:?} for serialization", $name))?;
@@ -115,5 +114,4 @@ macro_rules! serialize {
 
         serialize(&value)
     }};
-
 }

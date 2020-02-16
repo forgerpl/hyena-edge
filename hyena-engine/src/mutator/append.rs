@@ -1,6 +1,5 @@
-use ty::{SourceId, TimestampFragment};
 use super::BlockData;
-
+use crate::ty::{SourceId, TimestampFragment};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Append {
@@ -28,7 +27,11 @@ impl Append {
     }
 
     pub fn into_parts(self) -> (TimestampFragment, SourceId, BlockData) {
-        let Append { ts, source_id, data } = self;
+        let Append {
+            ts,
+            source_id,
+            data,
+        } = self;
 
         (ts, source_id, data)
     }
@@ -37,13 +40,13 @@ impl Append {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use error::*;
+    use crate::block::SparseIndex;
+    use crate::error::*;
+    use crate::ty::Fragment;
+    use hyena_common::ty::Timestamp;
     use hyena_test::random::timestamp::RandomTimestampGen;
     use rand::{thread_rng, Rng};
-    use block::SparseIndex;
     use std::iter::repeat;
-    use ty::Fragment;
-    use hyena_common::ty::Timestamp;
 
     #[test]
     fn serialize() {
@@ -68,7 +71,6 @@ mod tests {
                 .enumerate()
                 .map(|(_idx, _)| rng.gen())
                 .collect::<Vec<u64>>(),
-
             repeat(())
                 .take(100)
                 .enumerate()

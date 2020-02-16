@@ -1,38 +1,35 @@
-extern crate bincode;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate hyena_common;
 #[cfg(test)]
 #[macro_use]
 extern crate hyena_test;
-extern crate hyena_engine;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate failure;
-extern crate extprim;
 #[macro_use]
 extern crate log;
 
 mod error;
 
-use error::*;
+use crate::error::*;
 
-use bincode::{Error as BinError, deserialize};
-use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Scan,
-ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment, Regex,
-ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId, ColumnIndexType,
-ColumnIndexStorage, StreamConfig, StreamState};
+use bincode::{deserialize, Error as BinError};
+use hyena_engine::{
+    Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnId, ColumnIndexStorage,
+    ColumnIndexType, ColumnMap, Fragment, Regex, Scan, ScanFilter as HScanFilter,
+    ScanFilterOp as HScanFilterOp, ScanTsRange, SourceId, StreamConfig, StreamState,
+    TimestampFragment,
+};
 
-use hyena_common::ty::{Uuid, Timestamp};
+use hyena_common::ty::{Timestamp, Uuid};
 
+use extprim::i128::i128;
+use extprim::u128::u128;
 use hyena_common::collections::{HashMap, HashSet};
 use std::convert::From;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::result::Result;
-use extprim::i128::i128;
-use extprim::u128::u128;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
@@ -68,7 +65,7 @@ impl InsertMessage {
 pub struct DataTriple {
     column_id: ColumnId,
     column_type: BlockType,
-    data: Option<Fragment>
+    data: Option<Fragment>,
 }
 
 impl DataTriple {
@@ -76,7 +73,7 @@ impl DataTriple {
         DataTriple {
             column_id: id,
             column_type: block_type,
-            data: data
+            data: data,
         }
     }
 }
@@ -107,7 +104,10 @@ impl ScanResultMessage {
 
 impl From<(Vec<DataTriple>, Option<StreamState>)> for ScanResultMessage {
     fn from(data: (Vec<DataTriple>, Option<StreamState>)) -> ScanResultMessage {
-        ScanResultMessage { data: data.0, stream_state: data.1 }
+        ScanResultMessage {
+            data: data.0,
+            stream_state: data.1,
+        }
     }
 }
 
@@ -128,7 +128,8 @@ pub enum ScanComparison {
 
 impl ScanComparison {
     fn to_scan_filter_op<T>(&self, val: T) -> Result<HScanFilterOp<T>, Error>
-        where T: Display + Debug + Clone + PartialEq + PartialOrd + Eq + Hash
+    where
+        T: Display + Debug + Clone + PartialEq + PartialOrd + Eq + Hash,
     {
         match *self {
             ScanComparison::Lt => Ok(HScanFilterOp::Lt(val)),
@@ -151,7 +152,9 @@ impl ScanComparison {
             ScanComparison::EndsWith => Ok(HScanFilterOp::EndsWith(val)),
             ScanComparison::Contains => Ok(HScanFilterOp::Contains(val)),
             ScanComparison::Matches => Ok(HScanFilterOp::Matches(Regex::new(&val)?)),
-            _ => Err(Error::InvalidScanRequest("Numeric operator for string data".into())),
+            _ => Err(Error::InvalidScanRequest(
+                "Numeric operator for string data".into(),
+            )),
         }
     }
 }
@@ -184,7 +187,9 @@ impl FilterVal {
             FilterVal::I32(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
             FilterVal::I64(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
             FilterVal::I128(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
-            FilterVal::String(ref val) => Ok(HScanFilter::from(op.to_scan_filter_op_str(val.to_string())?)),
+            FilterVal::String(ref val) => Ok(HScanFilter::from(
+                op.to_scan_filter_op_str(val.to_string())?,
+            )),
         }
     }
 }
@@ -208,54 +213,67 @@ pub struct ScanRequest {
 }
 
 fn from_sr(scan_request: ScanRequest) -> Result<Scan, Error> {
-
-    let scan_range = ScanTsRange::Bounded{
+    let scan_range = ScanTsRange::Bounded {
         start: Timestamp::from(scan_request.min_ts),
-        end:   Timestamp::from(scan_request.max_ts),
+        end: Timestamp::from(scan_request.max_ts),
     };
 
-    let partitions =
-        if !scan_request.partition_ids.is_empty() {
-            Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
-        } else { None };
+    let partitions = if !scan_request.partition_ids.is_empty() {
+        Some(
+            scan_request
+                .partition_ids
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+        )
+    } else {
+        None
+    };
 
     let filters = if scan_request.filters.is_empty() {
         None
     } else {
-        Some(scan_request.filters
-             .iter()
-             .enumerate()
-             .flat_map(|(and_group, and_filters)| {
-                 and_filters
-                     .iter()
-                     .map(move |and_filter| {
-                         let op = and_filter.typed_val.to_scan_filter(&and_filter.op)?;
+        Some(
+            scan_request
+                .filters
+                .iter()
+                .enumerate()
+                .flat_map(|(and_group, and_filters)| {
+                    and_filters.iter().map(move |and_filter| {
+                        let op = and_filter.typed_val.to_scan_filter(&and_filter.op)?;
 
-                         Ok((and_group, and_filter.column, op))
-                     })
-             })
-             .collect::<Result<Vec<(usize, usize, hyena_engine::ScanFilter)>, Error>>()?
-             .iter().cloned()
-             .fold(hyena_engine::ScanFilters::new(), |mut map, (and_group, column_id, op)| {
-                 {
-                     let or_vec = map.entry(column_id).or_insert_with(|| Vec::new());
+                        Ok((and_group, and_filter.column, op))
+                    })
+                })
+                .collect::<Result<Vec<(usize, usize, hyena_engine::ScanFilter)>, Error>>()?
+                .iter()
+                .cloned()
+                .fold(
+                    hyena_engine::ScanFilters::new(),
+                    |mut map, (and_group, column_id, op)| {
+                        {
+                            let or_vec = map.entry(column_id).or_insert_with(|| Vec::new());
 
-                     or_vec.resize(and_group + 1, Vec::new());
+                            or_vec.resize(and_group + 1, Vec::new());
 
-                     let and_vec = or_vec.get_mut(and_group).unwrap();
-                     and_vec.push(op);
-                 }
+                            let and_vec = or_vec.get_mut(and_group).unwrap();
+                            and_vec.push(op);
+                        }
 
-                 map
-             }))
+                        map
+                    },
+                ),
+        )
     };
 
-    Ok(Scan::new(filters,
-                 Some(scan_request.projection),
-                 None,
-                 partitions,
-                 Some(scan_range),
-                 scan_request.stream))
+    Ok(Scan::new(
+        filters,
+        Some(scan_request.projection),
+        None,
+        partitions,
+        Some(scan_range),
+        scan_request.stream,
+    ))
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -270,7 +288,6 @@ pub struct AddColumnIndexRequest {
     pub index_type: ColumnIndexType,
 }
 
-
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct PartitionInfo {
     min_ts: u64,
@@ -281,17 +298,22 @@ pub struct PartitionInfo {
 
 impl PartitionInfo {
     pub fn new(min_ts: u64, max_ts: u64, id: Uuid, location: String) -> Self {
-        PartitionInfo { min_ts, max_ts, id, location }
+        PartitionInfo {
+            min_ts,
+            max_ts,
+            id,
+            location,
+        }
     }
 
-//     fn from(partition: &Partition<'a>) -> PartitionInfo {
-//         PartitionInfo {
-//             min_ts: partition.ts_min.into(),
-//             max_ts: partition.ts_max.into(),
-//             id: partition.id.into(),
-//             location: String::new(),
-//         }
-//     }
+    //     fn from(partition: &Partition<'a>) -> PartitionInfo {
+    //         PartitionInfo {
+    //             min_ts: partition.ts_min.into(),
+    //             max_ts: partition.ts_max.into(),
+    //             id: partition.id.into(),
+    //             location: String::new(),
+    //         }
+    //     }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -323,7 +345,8 @@ impl std::fmt::Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match *self {
             Request::Insert(ref msg) => {
-                let fragments_str: Vec<String> = msg.columns
+                let fragments_str: Vec<String> = msg
+                    .columns
                     .iter()
                     .map(|c| {
                         c.iter()
@@ -332,11 +355,13 @@ impl std::fmt::Display for Request {
                             .join(", ")
                     })
                     .collect();
-                write!(f,
-                       "Insert(timestamps={} items, source={}, fragments=[{}])",
-                       msg.timestamps.len(),
-                       msg.source,
-                       fragments_str.join(", "))
+                write!(
+                    f,
+                    "Insert(timestamps={} items, source={}, fragments=[{}])",
+                    msg.timestamps.len(),
+                    msg.source,
+                    fragments_str.join(", ")
+                )
             }
             _ => write!(f, "{:?}", self),
         }
@@ -377,23 +402,22 @@ pub enum Reply {
 impl std::fmt::Display for Reply {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match *self {
-            Reply::Scan(ref msg) => {
-                match *msg {
-                    Ok(ref result) => {
-                        let columns: Vec<String> = result.data
-                            .iter()
-                            .map(|data| match data.data {
-                                Some(ref fragment) => {
-                                    format!("column #{}: {} items", data.column_id, fragment.len())
-                                }
-                                None => format!("column #{}: 0 items", data.column_id),
-                            })
-                            .collect();
-                        write!(f, "ScanResultMessage(data={}", columns.join(", "))
-                    }
-                    Err(ref error) => write!(f, "{:?}", error),
+            Reply::Scan(ref msg) => match *msg {
+                Ok(ref result) => {
+                    let columns: Vec<String> = result
+                        .data
+                        .iter()
+                        .map(|data| match data.data {
+                            Some(ref fragment) => {
+                                format!("column #{}: {} items", data.column_id, fragment.len())
+                            }
+                            None => format!("column #{}: 0 items", data.column_id),
+                        })
+                        .collect();
+                    write!(f, "ScanResultMessage(data={}", columns.join(", "))
                 }
-            }
+                Err(ref error) => write!(f, "{:?}", error),
+            },
             _ => write!(f, "{:?}", self),
         }
     }
@@ -402,7 +426,8 @@ impl std::fmt::Display for Reply {
 impl Reply {
     fn list_columns(catalog: &Catalog) -> Reply {
         let cm: &ColumnMap = catalog.as_ref();
-        let names = cm.iter()
+        let names = cm
+            .iter()
             .map(|(id, column)| ReplyColumn::new(column.block_type(), *id, format!("{}", column)))
             .collect();
         Reply::ListColumns(names)
@@ -413,13 +438,15 @@ impl Reply {
             return Reply::AddColumn(Err(Error::ColumnNameCannotBeEmpty));
         }
 
-        let column = Column::new(BlockStorage::Memmap(request.column_type),
-                                 request.column_name.as_str());
+        let column = Column::new(
+            BlockStorage::Memmap(request.column_type),
+            request.column_name.as_str(),
+        );
         let id = catalog.next_id();
-        info!("Adding column {}:{:?} with id {}",
-              request.column_name,
-              request.column_type,
-              id);
+        info!(
+            "Adding column {}:{:?} with id {}",
+            request.column_name, request.column_type, id
+        );
         let mut map = HashMap::new();
         map.insert(id, column);
 
@@ -433,13 +460,14 @@ impl Reply {
     }
 
     fn add_index(request: AddColumnIndexRequest, catalog: &mut Catalog) -> Reply {
-        let AddColumnIndexRequest { column_id, index_type } = request;
+        let AddColumnIndexRequest {
+            column_id,
+            index_type,
+        } = request;
 
         let index = ColumnIndexStorage::Memmap(index_type);
 
-        info!("Adding index {:?} with id {}",
-              index_type,
-              column_id);
+        info!("Adding index {:?} with id {}", index_type, column_id);
 
         match catalog.add_indexes(hashmap! { column_id => index }.into()) {
             Ok(_) => {
@@ -463,19 +491,23 @@ impl Reply {
         for block in insert.columns.iter() {
             for (id, fragment) in block {
                 if fragment.is_sparse() && fragment.len() > timestamps.len() {
-                    let err_msg = format!("Sparse block data length is greater than timestamp \
+                    let err_msg = format!(
+                        "Sparse block data length is greater than timestamp \
                                            length (column {}, timestamps {}, data length {})",
-                                          id,
-                                          timestamps.len(),
-                                          fragment.len());
+                        id,
+                        timestamps.len(),
+                        fragment.len()
+                    );
                     return Reply::Insert(Err(Error::InconsistentData(err_msg)));
                 }
                 if !fragment.is_sparse() && fragment.len() != timestamps.len() {
-                    let err_msg = format!("Dense block data length does not match timestamp \
+                    let err_msg = format!(
+                        "Dense block data length does not match timestamp \
                                            length (column {}, timestamps {}, data length {})",
-                                          id,
-                                          timestamps.len(),
-                                          fragment.len());
+                        id,
+                        timestamps.len(),
+                        fragment.len()
+                    );
                     return Reply::Insert(Err(Error::InconsistentData(err_msg)));
                 }
             }
@@ -483,30 +515,35 @@ impl Reply {
 
         {
             // Block for a mutable borrow
-            let groups_ensured = catalog.add_partition_group(source)
+            let groups_ensured = catalog
+                .add_partition_group(source)
                 .with_context(|_| format!("Could not create group for source {}", source));
             if groups_ensured.is_err() {
-                return Reply::Insert(Err(Error::CatalogError(groups_ensured.unwrap_err()
-                    .to_string())));
+                return Reply::Insert(Err(Error::CatalogError(
+                    groups_ensured.unwrap_err().to_string(),
+                )));
             }
         }
 
         let col_len = insert.columns.len();
-        let merged_data = insert.columns.into_iter().flat_map(|block| block.into_iter()).collect::<BlockData>();
+        let merged_data = insert
+            .columns
+            .into_iter()
+            .flat_map(|block| block.into_iter())
+            .collect::<BlockData>();
         if merged_data.len() != col_len {
             // At least one of the columns were repeated.
-            return Reply::Insert(Err(Error::InconsistentData("At least one of the colums is repeated.".into())));
+            return Reply::Insert(Err(Error::InconsistentData(
+                "At least one of the colums is repeated.".into(),
+            )));
         }
-        let append = Append::new(
-            timestamps,
-            insert.source,
-            merged_data
-        );
+        let append = Append::new(timestamps, insert.source, merged_data);
         let result = catalog.append(&append);
         match result {
             Err(e) => Reply::Insert(Err(Error::Unknown(e.to_string()))),
             Ok(inserted) => {
-                let flushed = catalog.flush()
+                let flushed = catalog
+                    .flush()
                     .with_context(|_| "Cannot flush catalog after inserting");
                 if flushed.is_err() {
                     Reply::Insert(Err(Error::CatalogError(flushed.unwrap_err().to_string())))
@@ -522,13 +559,14 @@ impl Reply {
             return Reply::Scan(Err(Error::InvalidScanRequest("min_ts > max_ts".into())));
         }
         if scan_request.projection.is_empty() {
-            return Reply::Scan(Err(Error::InvalidScanRequest("Projections cannot be empty"
-                .into())));
+            return Reply::Scan(Err(Error::InvalidScanRequest(
+                "Projections cannot be empty".into(),
+            )));
         }
 
         let scan = match from_sr(scan_request) {
             Ok(scan) => scan,
-            Err(e) => return Reply::Scan(Err(e))
+            Err(e) => return Reply::Scan(Err(e)),
         };
         let result = match catalog.scan(&scan) {
             Ok(r) => r,
@@ -541,31 +579,28 @@ impl Reply {
 
         let srm = result
             .into_iter()
-            .map(|(column, fragment)| {
-                match cm.get(&column) {
-                    None => None,
-                    Some(col) =>
-                        Some(DataTriple {
-                            column_id: column,
-                            column_type: match **col {
-                                BlockStorage::Memory(t) => t,
-                                BlockStorage::Memmap(t) => t,
-                            },
-                            data: fragment
-                        })
-                }
+            .map(|(column, fragment)| match cm.get(&column) {
+                None => None,
+                Some(col) => Some(DataTriple {
+                    column_id: column,
+                    column_type: match **col {
+                        BlockStorage::Memory(t) => t,
+                        BlockStorage::Memmap(t) => t,
+                    },
+                    data: fragment,
+                }),
             })
             .filter(|item| item.is_some())
             .map(|item| item.unwrap()) // None items, which can fail the `unwrap`,
-                                       // has been filtered out in previous line
+            // has been filtered out in previous line
             .collect::<Vec<DataTriple>>();
 
         Reply::Scan(Ok(ScanResultMessage::from((srm, stream_data))))
     }
 
     fn get_catalog(catalog: &Catalog) -> Reply {
-
-        let columns = catalog.as_ref()
+        let columns = catalog
+            .as_ref()
             .iter()
             .map(|(id, c)| {
                 let t = match **c {
@@ -583,26 +618,26 @@ impl Reply {
         // The partition API in hyena-engine is not yet stable
         // so disable this for the time being
 
-//         let mut partitions: Vec<PartitionInfo> = catalog.groups
-//             .values()
-//             .flat_map(|g| g.immutable_partitions.values().collect::<Vec<_>>())
-//             .map(|partition| PartitionInfo::from(partition))
-//             .collect();
+        //         let mut partitions: Vec<PartitionInfo> = catalog.groups
+        //             .values()
+        //             .flat_map(|g| g.immutable_partitions.values().collect::<Vec<_>>())
+        //             .map(|partition| PartitionInfo::from(partition))
+        //             .collect();
 
-//         let mutable: Vec<PartitionInfo> = catalog.groups
-//             .values()
-//             .flat_map(|g| {
-//                 let unlocked = g.mutable_partitions.read().unwrap();
-//                 let mutable: Vec<PartitionInfo> = unlocked.iter()
-//                     .map(|partition| PartitionInfo::from(partition))
-//                     .collect();
-//                 mutable
-//             })
-//             .collect();
-//         partitions.extend(mutable);
+        //         let mutable: Vec<PartitionInfo> = catalog.groups
+        //             .values()
+        //             .flat_map(|g| {
+        //                 let unlocked = g.mutable_partitions.read().unwrap();
+        //                 let mutable: Vec<PartitionInfo> = unlocked.iter()
+        //                     .map(|partition| PartitionInfo::from(partition))
+        //                     .collect();
+        //                 mutable
+        //             })
+        //             .collect();
+        //         partitions.extend(mutable);
         let response = RefreshCatalogResponse {
             columns: columns,
-//             available_partitions: partitions,
+            //             available_partitions: partitions,
             available_partitions: Default::default(),
         };
         Reply::RefreshCatalog(response)
@@ -629,13 +664,13 @@ impl From<error::Error> for Error {
         // ^^ Error needs to be #[derive(Fail)]
         // and we also need specialized errors in the hyena-engine
         // (which is a todo)
-//         match *err.kind() {
-//             error::ErrorKind::ColumnNameAlreadyExists(ref s) => {
-//                 Error::ColumnNameAlreadyExists(s.clone())
-//             }
-//             error::ErrorKind::ColumnIdAlreadyExists(ref u) => Error::ColumnIdAlreadyExists(*u),
-//             _ => Error::Unknown(err.description().into()),
-//         }
+        //         match *err.kind() {
+        //             error::ErrorKind::ColumnNameAlreadyExists(ref s) => {
+        //                 Error::ColumnNameAlreadyExists(s.clone())
+        //             }
+        //             error::ErrorKind::ColumnIdAlreadyExists(ref u) => Error::ColumnIdAlreadyExists(*u),
+        //             _ => Error::Unknown(err.description().into()),
+        //         }
 
         Error::Unknown(err.to_string())
     }
@@ -661,8 +696,8 @@ mod tests {
         pub use super::*;
 
         mod list_columns {
-            use super::*;
             use super::Reply::ListColumns;
+            use super::*;
             use hyena_engine::BlockStorage::*;
             use hyena_engine::BlockType;
 
@@ -681,29 +716,31 @@ mod tests {
                 if let ListColumns(mut colvec) = reply {
                     colvec.sort_by_key(|column| column.id);
                     assert_eq!(4, colvec.len());
-                    assert_eq!(&[
-                        ReplyColumn {
-                            typ: BlockType::U64Dense,
-                            id: 0,
-                            name: "timestamp".into(),
-                        },
-                        ReplyColumn {
-                            typ: BlockType::I32Dense,
-                            id: 1,
-                            name: "source_id".into(),
-                        },
-                        ReplyColumn {
-                            typ: BlockType::U32Dense,
-                            id: 2,
-                            name: "test_column1".into(),
-                        },
-                        ReplyColumn {
-                            typ: BlockType::I64Sparse,
-                            id: 3,
-                            name: "test_column2".into(),
-                        },
-                    ][..],
-                    &colvec[..]);
+                    assert_eq!(
+                        &[
+                            ReplyColumn {
+                                typ: BlockType::U64Dense,
+                                id: 0,
+                                name: "timestamp".into(),
+                            },
+                            ReplyColumn {
+                                typ: BlockType::I32Dense,
+                                id: 1,
+                                name: "source_id".into(),
+                            },
+                            ReplyColumn {
+                                typ: BlockType::U32Dense,
+                                id: 2,
+                                name: "test_column1".into(),
+                            },
+                            ReplyColumn {
+                                typ: BlockType::I64Sparse,
+                                id: 3,
+                                name: "test_column2".into(),
+                            },
+                        ][..],
+                        &colvec[..]
+                    );
                 } else {
                     panic!("Wrong Reply type returned")
                 }
@@ -723,8 +760,8 @@ mod tests {
         }
 
         mod add_column {
-            use super::*;
             use super::Reply::{AddColumn, ListColumns};
+            use super::*;
             use hyena_engine::BlockType;
 
             #[test]
@@ -737,8 +774,8 @@ mod tests {
 
                 let td = tempdir!();
 
-                let mut catalog = Catalog::new(&td)
-                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+                let mut catalog =
+                    Catalog::new(&td).unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
 
                 let added = Reply::add_column(request, &mut catalog);
 
@@ -752,7 +789,8 @@ mod tests {
                 let columns = Reply::list_columns(&catalog);
 
                 if let ListColumns(cols) = columns {
-                    let added = cols.iter()
+                    let added = cols
+                        .iter()
                         .find(|item| item.id == 2)
                         .unwrap_or_else(|| panic!("Freshly added column not found"));
                     assert_eq!(BlockType::I32Dense, added.typ);
@@ -770,8 +808,8 @@ mod tests {
 
                 let td = tempdir!();
 
-                let mut catalog = Catalog::new(&td)
-                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+                let mut catalog =
+                    Catalog::new(&td).unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
 
                 let added = Reply::add_column(request, &mut catalog);
 
@@ -783,8 +821,8 @@ mod tests {
         }
 
         mod add_index {
+            use super::Reply::{AddColumn, AddColumnIndex};
             use super::*;
-            use super::Reply::{AddColumnIndex, AddColumn};
             use hyena_test::tempfile::TempDir;
 
             fn prepare_catalog<'cat>() -> (TempDir, Catalog<'cat>, ColumnId) {
@@ -796,8 +834,8 @@ mod tests {
 
                 let td = tempdir!();
 
-                let mut catalog = Catalog::new(&td)
-                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+                let mut catalog =
+                    Catalog::new(&td).unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
 
                 let id = if let AddColumn(Ok(id)) = Reply::add_column(request, &mut catalog) {
                     id
@@ -847,9 +885,9 @@ mod tests {
 
         mod insert {
             use super::*;
-            use hyena_engine::Fragment;
-            use hyena_engine::BlockType::{I8Dense, U8Sparse};
             use hyena_engine::BlockStorage::Memory;
+            use hyena_engine::BlockType::{I8Dense, U8Sparse};
+            use hyena_engine::Fragment;
 
             #[test]
             fn creates_source_group() {
@@ -857,43 +895,44 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1],
-                    columns: vec![hashmap!{0 => Fragment::I8Dense(vec![1])}],
+                    columns: vec![hashmap! {0 => Fragment::I8Dense(vec![1])}],
                 };
 
                 let td = tempdir!();
 
-                let mut catalog = Catalog::new(&td)
-                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+                let mut catalog =
+                    Catalog::new(&td).unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
 
                 Reply::insert(insert, &mut catalog);
 
-//                 catalog.groups
-//                     .get(&source)
-//                     .unwrap_or_else(|| panic!("Group should have been created."));
-
+                //                 catalog.groups
+                //                     .get(&source)
+                //                     .unwrap_or_else(|| panic!("Group should have been created."));
             }
 
             #[test]
             fn inserts_all_appends() {
                 use hyena_engine::Catalog;
-//                 use partition::Partition;
-//                 use std::collections::VecDeque;
+                //                 use partition::Partition;
+                //                 use std::collections::VecDeque;
 
                 let source = 100;
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap!{ 1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106])},
-                                  hashmap!{ 2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
-                                                                       vec![121, 221, 321, 421, 521, 621])}
+                    columns: vec![
+                        hashmap! { 1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106])},
+                        hashmap! { 2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
+                        vec![121, 221, 321, 421, 521, 621])},
                     ],
                 };
 
                 let td = tempdir!();
 
-                let mut catalog = Catalog::new(&td)
-                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
-                catalog.add_columns(hashmap!{
+                let mut catalog =
+                    Catalog::new(&td).unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+                catalog
+                    .add_columns(hashmap! {
                     1000 => Column::new(Memory(I8Dense),  "dense"),
                     2000 => Column::new(Memory(U8Sparse), "sparse"),
                     })
@@ -906,33 +945,33 @@ mod tests {
                     _ => panic!("Insert should not have been rejected"),
                 }
 
-//                 let cgroups = &catalog.groups;
-//                 let groups: &catalog::PartitionGroup = &cgroups.get(&source).unwrap();
-//                 let mpartitions = &groups.mutable_partitions;
-//                 let partitions: &VecDeque<Partition> = &*mpartitions.read().unwrap();
-//                 assert_eq!(1, partitions.len());
-//
-//                 let blocks = partitions.front().unwrap().get_blocks();
-//                 if let TyBlock::Memory(MemBlock::I8Dense(ref one)) =
-//                     *blocks.get(&1000).unwrap().read().unwrap() {
-//                     assert_eq!(vec![101i8, 102, 103, 104, 105, 106].as_slice(),
-//                                &one.as_ref()[0..6]);
-//                 } else {
-//                     panic!("Wrong block type!");
-//                 };
-//
-//                 if let TyBlock::Memory(MemBlock::U8Sparse(ref _block)) =
-//                     *blocks.get(&2000).unwrap().read().unwrap() {
-//                     // FAILS! WHY?!
-//
-//                     //let (index, data) = (block.as_ref_index(), block.as_ref());
-//                     //assert_eq!(vec![201, 202, 203, 204, 205, 206].as_slice(),
-//                     //           &data.as_ref()[0..6]);
-//                     //assert_eq!(vec![121, 221, 321, 421, 521, 621].as_slice(),
-//                     //           &index.as_ref()[0..6]);
-//                 } else {
-//                     panic!("Wrong block type!");
-//                 };
+                //                 let cgroups = &catalog.groups;
+                //                 let groups: &catalog::PartitionGroup = &cgroups.get(&source).unwrap();
+                //                 let mpartitions = &groups.mutable_partitions;
+                //                 let partitions: &VecDeque<Partition> = &*mpartitions.read().unwrap();
+                //                 assert_eq!(1, partitions.len());
+                //
+                //                 let blocks = partitions.front().unwrap().get_blocks();
+                //                 if let TyBlock::Memory(MemBlock::I8Dense(ref one)) =
+                //                     *blocks.get(&1000).unwrap().read().unwrap() {
+                //                     assert_eq!(vec![101i8, 102, 103, 104, 105, 106].as_slice(),
+                //                                &one.as_ref()[0..6]);
+                //                 } else {
+                //                     panic!("Wrong block type!");
+                //                 };
+                //
+                //                 if let TyBlock::Memory(MemBlock::U8Sparse(ref _block)) =
+                //                     *blocks.get(&2000).unwrap().read().unwrap() {
+                //                     // FAILS! WHY?!
+                //
+                //                     //let (index, data) = (block.as_ref_index(), block.as_ref());
+                //                     //assert_eq!(vec![201, 202, 203, 204, 205, 206].as_slice(),
+                //                     //           &data.as_ref()[0..6]);
+                //                     //assert_eq!(vec![121, 221, 321, 421, 521, 621].as_slice(),
+                //                     //           &index.as_ref()[0..6]);
+                //                 } else {
+                //                     panic!("Wrong block type!");
+                //                 };
             }
 
             fn verify_insert_rejected_no_data(insert: InsertMessage, catalog: &mut Catalog) {
@@ -950,8 +989,8 @@ mod tests {
 
                 let td = tempdir!();
 
-                let mut catalog = Catalog::new(&td)
-                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+                let mut catalog =
+                    Catalog::new(&td).unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![],
@@ -969,7 +1008,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![],
-                    columns: vec![hashmap!{
+                    columns: vec![hashmap! {
                         0 => Fragment::I8Dense(vec![1,2,3])
                     }],
                 };
@@ -982,7 +1021,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5],
-                    columns: vec![hashmap!{
+                    columns: vec![hashmap! {
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
                                                    vec![121, 221, 321, 421, 521, 621])
@@ -991,9 +1030,10 @@ mod tests {
 
                 let td = tempdir!();
 
-                let mut catalog = Catalog::new(&td)
-                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
-                catalog.add_columns(hashmap!{
+                let mut catalog =
+                    Catalog::new(&td).unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+                catalog
+                    .add_columns(hashmap! {
                     1000 => Column::new(Memory(I8Dense), "dense"),
                     2000 => Column::new(Memory(U8Sparse), "sparse"),
                     })
@@ -1009,7 +1049,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap!{
+                    columns: vec![hashmap! {
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
                                                    vec![121, 221, 321, 421, 521, 621])
@@ -1025,7 +1065,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap!{
+                    columns: vec![hashmap! {
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206, 207],
                                                    vec![121, 221, 321, 421, 521, 621, 721])
@@ -1041,11 +1081,11 @@ mod tests {
         }
 
         mod get_catalog {
-            use super::*;
             use super::Reply::RefreshCatalog;
-            use hyena_engine::{BlockType, Fragment};
-            use hyena_engine::BlockType::{I8Dense, U8Sparse};
+            use super::*;
             use hyena_engine::BlockStorage::Memory;
+            use hyena_engine::BlockType::{I8Dense, U8Sparse};
+            use hyena_engine::{BlockType, Fragment};
 
             #[test]
             fn handles_empty_catalog() {
@@ -1059,16 +1099,16 @@ mod tests {
                 } else {
                     panic!("Wrong Reply type returned")
                 }
-
             }
 
             #[test]
             fn returns_mem_and_mmap_columns() {
                 let td = tempdir!();
 
-                let mut catalog = Catalog::new(&td)
-                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
-                catalog.add_columns(hashmap!{
+                let mut catalog =
+                    Catalog::new(&td).unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+                catalog
+                    .add_columns(hashmap! {
                     1000 => Column::new(Memory(I8Dense), "dense"),
                     2000 => Column::new(Memory(U8Sparse), "sparse"),
                     })
@@ -1078,7 +1118,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap!{
+                    columns: vec![hashmap! {
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
                                                    vec![121, 221, 321, 421, 521, 621])
@@ -1091,29 +1131,32 @@ mod tests {
                     // Verify columns
                     response.columns.sort_by_key(|column| column.id);
                     assert_eq!(4, response.columns.len());
-                    assert_eq!(ReplyColumn {
-                                   typ: BlockType::I8Dense,
-                                   id: 1000,
-                                   name: "dense".into(),
-                               },
-                               response.columns[2]);
-                    assert_eq!(ReplyColumn {
-                                   typ: BlockType::U8Sparse,
-                                   id: 2000,
-                                   name: "sparse".into(),
-                               },
-                               response.columns[3]);
+                    assert_eq!(
+                        ReplyColumn {
+                            typ: BlockType::I8Dense,
+                            id: 1000,
+                            name: "dense".into(),
+                        },
+                        response.columns[2]
+                    );
+                    assert_eq!(
+                        ReplyColumn {
+                            typ: BlockType::U8Sparse,
+                            id: 2000,
+                            name: "sparse".into(),
+                        },
+                        response.columns[3]
+                    );
 
-                    // Verify partitions
-//                     assert_eq!(1, response.available_partitions.len());
-//                     let first = &response.available_partitions[0];
-//                     assert_eq!(1, first.min_ts);
-//                     assert_eq!(1, first.max_ts);
-//                     assert_eq!("", first.location);
+                // Verify partitions
+                //                     assert_eq!(1, response.available_partitions.len());
+                //                     let first = &response.available_partitions[0];
+                //                     assert_eq!(1, first.min_ts);
+                //                     assert_eq!(1, first.max_ts);
+                //                     assert_eq!("", first.location);
                 } else {
                     panic!("Wrong Reply type returned")
                 }
-
             }
         }
 
@@ -1126,7 +1169,6 @@ mod tests {
                 let td = tempdir!();
                 let cat = Catalog::new(&td).expect("Unable to create catalog");
 
-
                 let partition_ids = hashset! { Uuid::default() };
 
                 let request = ScanRequest {
@@ -1135,10 +1177,10 @@ mod tests {
                     partition_ids: partition_ids,
                     projection: vec![1, 2, 3],
                     filters: vec![vec![ScanFilter {
-                                      column: 1,
-                                      op: ScanComparison::Eq,
-                                      typed_val: FilterVal::I8(10),
-                                  }]],
+                        column: 1,
+                        op: ScanComparison::Eq,
+                        typed_val: FilterVal::I8(10),
+                    }]],
                     stream: None,
                 };
 
@@ -1161,16 +1203,16 @@ mod tests {
                     partition_ids: partition_ids,
                     projection: vec![1, 2, 3],
                     filters: vec![vec![ScanFilter {
-                                      column: 1,
-                                      op: op,
-                                      typed_val: FilterVal::String("hello".into()),
-                                  }]],
+                        column: 1,
+                        op: op,
+                        typed_val: FilterVal::String("hello".into()),
+                    }]],
                     stream: None,
                 };
 
                 let reply = Reply::scan(request, &cat);
                 match reply {
-                    Reply::Scan(Ok(_)) =>  { /* OK, do nothing */ }
+                    Reply::Scan(Ok(_)) => { /* OK, do nothing */ }
                     Reply::Scan(Err(_)) => panic!("Should not have rejected the scan request"),
                     _ => panic!("Wrong Reply type"),
                 }
@@ -1196,10 +1238,10 @@ mod tests {
                     partition_ids: partition_ids,
                     projection: vec![1, 2, 3],
                     filters: vec![vec![ScanFilter {
-                                      column: 1,
-                                      op: op,
-                                      typed_val: FilterVal::I8(10),
-                                  }]],
+                        column: 1,
+                        op: op,
+                        typed_val: FilterVal::I8(10),
+                    }]],
                     stream: None,
                 };
 
@@ -1232,10 +1274,10 @@ mod tests {
                     partition_ids: partition_ids,
                     projection: vec![1, 2, 3],
                     filters: vec![vec![ScanFilter {
-                                      column: 1,
-                                      op: ScanComparison::Gt,
-                                      typed_val: FilterVal::String("hello".into()),
-                                  }]],
+                        column: 1,
+                        op: ScanComparison::Gt,
+                        typed_val: FilterVal::String("hello".into()),
+                    }]],
                     stream: None,
                 };
 
@@ -1246,7 +1288,6 @@ mod tests {
                     _ => panic!("Wrong Reply type"),
                 }
             }
-
 
             mod or {
                 use super::*;
@@ -1260,7 +1301,8 @@ mod tests {
                         projection: vec![1, 2, 3],
                         filters,
                         stream: None,
-                    }).unwrap()
+                    })
+                    .unwrap()
                 }
 
                 #[inline]
@@ -1270,7 +1312,7 @@ mod tests {
                         Some(vec![1, 2, 3]),
                         None,
                         None,
-                        Some(ScanTsRange::Bounded{
+                        Some(ScanTsRange::Bounded {
                             start: Timestamp::from(1),
                             end: Timestamp::from(10),
                         }),
@@ -1278,22 +1320,19 @@ mod tests {
                     );
 
                     assert_eq!(expected, result);
-
                 }
 
                 // ts > 12
 
                 #[test]
                 fn single_and() {
-                    let scan = build_scan(vec![vec![
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Gt,
-                            typed_val: FilterVal::U64(12),
-                        }
-                    ]]);
+                    let scan = build_scan(vec![vec![ScanFilter {
+                        column: 0,
+                        op: ScanComparison::Gt,
+                        typed_val: FilterVal::U64(12),
+                    }]]);
 
-                    let expected = hashmap!{
+                    let expected = hashmap! {
                         0 => vec![vec![EngineFilter::U64(ScanFilterOp::Gt(12))]],
                     };
 
@@ -1314,10 +1353,10 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                        }
+                        },
                     ]]);
 
-                    let expected = hashmap!{
+                    let expected = hashmap! {
                         0 => vec![vec![
                             EngineFilter::U64(ScanFilterOp::Gt(12)),
                             EngineFilter::U64(ScanFilterOp::Lt(30)),
@@ -1346,11 +1385,10 @@ mod tests {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                        }
-
+                        },
                     ]]);
 
-                    let expected = hashmap!{
+                    let expected = hashmap! {
                         0 => vec![vec![
                             EngineFilter::U64(ScanFilterOp::Gt(12)),
                             EngineFilter::U64(ScanFilterOp::Lt(30)),
@@ -1367,32 +1405,32 @@ mod tests {
 
                 #[test]
                 fn two_ands_two_columns_single_or() {
-                    let scan = build_scan(vec![vec![
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Gt,
-                            typed_val: FilterVal::U64(12),
-                        },
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Lt,
-                            typed_val: FilterVal::U64(30),
-                        },
-                        ScanFilter {
-                            column: 1,
-                            op: ScanComparison::Eq,
-                            typed_val: FilterVal::U32(12),
-                        }
-
-                    ], vec![
-                        ScanFilter {
+                    let scan = build_scan(vec![
+                        vec![
+                            ScanFilter {
+                                column: 0,
+                                op: ScanComparison::Gt,
+                                typed_val: FilterVal::U64(12),
+                            },
+                            ScanFilter {
+                                column: 0,
+                                op: ScanComparison::Lt,
+                                typed_val: FilterVal::U64(30),
+                            },
+                            ScanFilter {
+                                column: 1,
+                                op: ScanComparison::Eq,
+                                typed_val: FilterVal::U32(12),
+                            },
+                        ],
+                        vec![ScanFilter {
                             column: 0,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U64(7),
-                        },
-                    ]]);
+                        }],
+                    ]);
 
-                    let expected = hashmap!{
+                    let expected = hashmap! {
                         0 => vec![
                             vec![
                                 EngineFilter::U64(ScanFilterOp::Gt(12)),
@@ -1414,36 +1452,39 @@ mod tests {
 
                 #[test]
                 fn two_ands_two_columns_two_ors() {
-                    let scan = build_scan(vec![vec![
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Gt,
-                            typed_val: FilterVal::U64(12),
-                        },
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Lt,
-                            typed_val: FilterVal::U64(30),
-                        },
-                        ScanFilter {
-                            column: 1,
-                            op: ScanComparison::Eq,
-                            typed_val: FilterVal::U32(12),
-                        }
-                    ], vec![
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Eq,
-                            typed_val: FilterVal::U64(7),
-                        },
-                        ScanFilter {
-                            column: 1,
-                            op: ScanComparison::Gt,
-                            typed_val: FilterVal::U32(10),
-                        }
-                    ]]);
+                    let scan = build_scan(vec![
+                        vec![
+                            ScanFilter {
+                                column: 0,
+                                op: ScanComparison::Gt,
+                                typed_val: FilterVal::U64(12),
+                            },
+                            ScanFilter {
+                                column: 0,
+                                op: ScanComparison::Lt,
+                                typed_val: FilterVal::U64(30),
+                            },
+                            ScanFilter {
+                                column: 1,
+                                op: ScanComparison::Eq,
+                                typed_val: FilterVal::U32(12),
+                            },
+                        ],
+                        vec![
+                            ScanFilter {
+                                column: 0,
+                                op: ScanComparison::Eq,
+                                typed_val: FilterVal::U64(7),
+                            },
+                            ScanFilter {
+                                column: 1,
+                                op: ScanComparison::Gt,
+                                typed_val: FilterVal::U32(10),
+                            },
+                        ],
+                    ]);
 
-                    let expected = hashmap!{
+                    let expected = hashmap! {
                         0 => vec![
                             vec![
                                 EngineFilter::U64(ScanFilterOp::Gt(12)),
@@ -1471,42 +1512,44 @@ mod tests {
 
                 #[test]
                 fn two_ands_two_columns_two_ors_added_column() {
-                    let scan = build_scan(vec![vec![
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Gt,
-                            typed_val: FilterVal::U64(12),
-                        },
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Lt,
-                            typed_val: FilterVal::U64(30),
-                        },
-                        ScanFilter {
-                            column: 1,
-                            op: ScanComparison::Eq,
-                            typed_val: FilterVal::U32(12),
-                        }
-                    ], vec![
-                        ScanFilter {
-                            column: 0,
-                            op: ScanComparison::Eq,
-                            typed_val: FilterVal::U64(7),
-                        },
-                        ScanFilter {
-                            column: 1,
-                            op: ScanComparison::Gt,
-                            typed_val: FilterVal::U32(10),
-                        },
-                        ScanFilter {
-                            column: 2,
-                            op: ScanComparison::Eq,
-                            typed_val: FilterVal::I8(2),
-                        }
+                    let scan = build_scan(vec![
+                        vec![
+                            ScanFilter {
+                                column: 0,
+                                op: ScanComparison::Gt,
+                                typed_val: FilterVal::U64(12),
+                            },
+                            ScanFilter {
+                                column: 0,
+                                op: ScanComparison::Lt,
+                                typed_val: FilterVal::U64(30),
+                            },
+                            ScanFilter {
+                                column: 1,
+                                op: ScanComparison::Eq,
+                                typed_val: FilterVal::U32(12),
+                            },
+                        ],
+                        vec![
+                            ScanFilter {
+                                column: 0,
+                                op: ScanComparison::Eq,
+                                typed_val: FilterVal::U64(7),
+                            },
+                            ScanFilter {
+                                column: 1,
+                                op: ScanComparison::Gt,
+                                typed_val: FilterVal::U32(10),
+                            },
+                            ScanFilter {
+                                column: 2,
+                                op: ScanComparison::Eq,
+                                typed_val: FilterVal::I8(2),
+                            },
+                        ],
+                    ]);
 
-                    ]]);
-
-                    let expected = hashmap!{
+                    let expected = hashmap! {
                         0 => vec![
                             vec![
                                 EngineFilter::U64(ScanFilterOp::Gt(12)),
@@ -1541,7 +1584,6 @@ mod tests {
                 let td = tempdir!();
                 let cat = Catalog::new(&td).expect("Unable to create catalog");
 
-
                 let partition_ids = hashset! { Uuid::default() };
 
                 let request = ScanRequest {
@@ -1550,18 +1592,18 @@ mod tests {
                     partition_ids: partition_ids,
                     projection: vec![],
                     filters: vec![vec![ScanFilter {
-                                      column: 1,
-                                      op: ScanComparison::Eq,
-                                      typed_val: FilterVal::U32(10),
-                                  }]],
+                        column: 1,
+                        op: ScanComparison::Eq,
+                        typed_val: FilterVal::U32(10),
+                    }]],
                     stream: None,
                 };
 
                 let _reply = Reply::scan(request, &cat);
-//                 match reply {
-//                     Reply::Scan(Err(Error::InvalidScanRequest(_))) => { /* OK, do nothing */ }
-//                     _ => panic!("Should have rejected the scan request"),
-//                 }
+                //                 match reply {
+                //                     Reply::Scan(Err(Error::InvalidScanRequest(_))) => { /* OK, do nothing */ }
+                //                     _ => panic!("Should have rejected the scan request"),
+                //                 }
             }
 
             // TODO add positive paths when the code is integrated

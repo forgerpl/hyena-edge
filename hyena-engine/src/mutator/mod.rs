@@ -1,5 +1,5 @@
+use crate::ty::{ColumnId, Fragment, FragmentRef};
 use hyena_common::collections::HashMap;
-use ty::{ColumnId, Fragment, FragmentRef};
 
 pub mod append;
 

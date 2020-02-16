@@ -1,29 +1,32 @@
-use std::collections::HashMap as StdHashMap;
-use std::iter::FromIterator;
-use std::hash::Hash;
-use std::ops::{Deref, DerefMut};
-use rayon::prelude::*;
 use super::hash::Hasher;
-
+use rayon::prelude::*;
+use std::collections::HashMap as StdHashMap;
+use std::hash::Hash;
+use std::iter::FromIterator;
+use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HashMap<K: Hash + Eq, V>(StdHashMap<K, V, Hasher>);
 
-
 impl<K, V> HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     pub fn new() -> HashMap<K, V> {
         HashMap::from(StdHashMap::with_hasher(Hasher::default()))
     }
 
     pub fn with_capacity(capacity: usize) -> HashMap<K, V> {
-        HashMap::from(StdHashMap::with_capacity_and_hasher(capacity, Hasher::default()))
+        HashMap::from(StdHashMap::with_capacity_and_hasher(
+            capacity,
+            Hasher::default(),
+        ))
     }
 }
 
 impl<K, V> From<StdHashMap<K, V, Hasher>> for HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     fn from(source: StdHashMap<K, V, Hasher>) -> Self {
         HashMap(source)
@@ -31,7 +34,8 @@ where K: Hash + Eq
 }
 
 impl<K, V> IntoIterator for HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     type Item = <StdHashMap<K, V, Hasher> as IntoIterator>::Item;
     type IntoIter = <StdHashMap<K, V, Hasher> as IntoIterator>::IntoIter;
@@ -42,7 +46,8 @@ where K: Hash + Eq
 }
 
 impl<'a, K, V> IntoIterator for &'a mut HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     type Item = <&'a mut StdHashMap<K, V, Hasher> as IntoIterator>::Item;
     type IntoIter = <&'a mut StdHashMap<K, V, Hasher> as IntoIterator>::IntoIter;
@@ -53,7 +58,8 @@ where K: Hash + Eq
 }
 
 impl<'a, K, V> IntoIterator for &'a HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     type Item = <&'a StdHashMap<K, V, Hasher> as IntoIterator>::Item;
     type IntoIter = <&'a StdHashMap<K, V, Hasher> as IntoIterator>::IntoIter;
@@ -64,7 +70,8 @@ where K: Hash + Eq
 }
 
 impl<K, V> FromIterator<(K, V)> for HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         Self::from(<StdHashMap<K, V, Hasher> as FromIterator<(K, V)>>::from_iter(iter))
@@ -72,7 +79,8 @@ where K: Hash + Eq
 }
 
 impl<K, V> Default for HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     fn default() -> Self {
         Self::from(<StdHashMap<K, V, Hasher> as Default>::default())
@@ -80,7 +88,8 @@ where K: Hash + Eq
 }
 
 impl<K, V> Deref for HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     type Target = StdHashMap<K, V, Hasher>;
 
@@ -90,7 +99,8 @@ where K: Hash + Eq
 }
 
 impl<K, V> DerefMut for HashMap<K, V>
-where K: Hash + Eq
+where
+    K: Hash + Eq,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -100,59 +110,51 @@ where K: Hash + Eq
 // rayon
 
 impl<K, V> FromParallelIterator<(K, V)> for HashMap<K, V>
-    where K: Hash + Eq + Send,
-          V: Send,
+where
+    K: Hash + Eq + Send,
+    V: Send,
 {
     fn from_par_iter<I>(par_iter: I) -> Self
-        where I: IntoParallelIterator<Item = (K, V)>
+    where
+        I: IntoParallelIterator<Item = (K, V)>,
     {
-        Self::from(<StdHashMap<K, V, Hasher> as FromParallelIterator<(K,
-V)>>::from_par_iter(par_iter))
+        Self::from(
+            <StdHashMap<K, V, Hasher> as FromParallelIterator<(K, V)>>::from_par_iter(par_iter),
+        )
     }
 }
-
 
 #[cfg(test)]
 mod tests {
     #[cfg(all(feature = "nightly", test))]
     mod benches {
         use super::super::*;
-        use test::{Bencher, black_box};
+        use test::{black_box, Bencher};
 
         fn data(count: usize, distance: usize, value_range: usize) -> Vec<(usize, u64)> {
             (0..count)
-                .map(|v| {
-                    (v * distance, (value_range % (v + 1)) as u64)
-                })
+                .map(|v| (v * distance, (value_range % (v + 1)) as u64))
                 .collect()
         }
 
         #[inline]
         fn single_impl<H>(b: &mut Bencher, count: usize, distance: usize, value_range: usize)
-        where H: FromIterator<(usize, u64)>
+        where
+            H: FromIterator<(usize, u64)>,
         {
             let d = data(count, distance, value_range);
 
-            b.iter(||
-                black_box(d
-                    .iter()
-                    .cloned()
-                    .collect::<H>())
-            )
+            b.iter(|| black_box(d.iter().cloned().collect::<H>()))
         }
 
         #[inline]
         fn par_impl<H>(b: &mut Bencher, count: usize, distance: usize, value_range: usize)
-        where H: FromParallelIterator<(usize, u64)>
+        where
+            H: FromParallelIterator<(usize, u64)>,
         {
             let d = data(count, distance, value_range);
 
-            b.iter(||
-                black_box(d
-                    .par_iter()
-                    .cloned()
-                    .collect::<H>())
-            )
+            b.iter(|| black_box(d.par_iter().cloned().collect::<H>()))
         }
 
         macro_rules! hmap_bench_impl {
@@ -220,10 +222,22 @@ mod tests {
         }
 
         hmap_bench_impl!(
-            single_100, 100, 1, 20,
-            single_10_000, 10_000, 4, 50,
-            single_100_000, 100_000, 12, 500,
-            single_1_000_000, 1_000_000, 24, 1000,
+            single_100,
+            100,
+            1,
+            20,
+            single_10_000,
+            10_000,
+            4,
+            50,
+            single_100_000,
+            100_000,
+            12,
+            500,
+            single_1_000_000,
+            1_000_000,
+            24,
+            1000,
         );
     }
 }

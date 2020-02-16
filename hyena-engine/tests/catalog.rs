@@ -1,11 +1,12 @@
 use failure::ResultExt;
 
-use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap,
-                   Fragment, Scan, ScanFilter, ScanFilterOp, ScanResult,
-                   SparseIndex, Timestamp, TimestampFragment};
+use hyena_engine::{
+    Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap, Fragment, Scan,
+    ScanFilter, ScanFilterOp, ScanResult, SparseIndex, Timestamp, TimestampFragment,
+};
 
-use std::iter::repeat;
 use hyena_common::collections::{HashMap, HashSet};
+use std::iter::repeat;
 
 #[macro_use]
 mod common;

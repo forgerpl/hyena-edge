@@ -1,18 +1,13 @@
-use crate::error::*;
-use std::marker::PhantomData;
-use std::fmt::Debug;
-use crate::storage::Storage;
 use crate::block::{BlockData, BufferHead, IndexMut, IndexRef};
+use crate::error::*;
+use crate::storage::Storage;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 
 pub type SparseIndex = u32;
 
-pub type SparseIndexedNumericBlock<'block, T, ST, SI> = SparseNumericBlock<
-    'block,
-    T,
-    SparseIndex,
-    ST,
-    SI,
->;
+pub type SparseIndexedNumericBlock<'block, T, ST, SI> =
+    SparseNumericBlock<'block, T, SparseIndex, ST, SI>;
 
 #[derive(Debug)]
 pub struct SparseNumericBlock<'block, T, I, ST, SI>
@@ -38,7 +33,6 @@ where
     SI: 'block + Storage<'block, I>,
 {
     pub fn new(storage: ST, index: SI) -> Result<SparseNumericBlock<'block, T, I, ST, SI>> {
-
         Ok(SparseNumericBlock {
             storage,
             index,
@@ -149,7 +143,6 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,10 +174,12 @@ mod tests {
                     assert_eq!(len, index.len());
 
                     let idx_source = (0..len)
-                        .filter_map(|idx| if idx % 3 == 0 {
-                            Some(idx as SparseIndex)
-                        } else {
-                            None
+                        .filter_map(|idx| {
+                            if idx % 3 == 0 {
+                                Some(idx as SparseIndex)
+                            } else {
+                                None
+                            }
                         })
                         .collect::<Vec<_>>();
                     let idx_len = idx_source.len();
@@ -219,10 +214,9 @@ mod tests {
     mod generic {
         use super::*;
         use num::{Float, Integer, Zero};
-        use std::mem::size_of;
         use std::fmt::Debug;
+        use std::mem::size_of;
         use std::ops::Not;
-
 
         pub(super) fn block_t<'block, T, ST, SI>(data: ST, index: SI)
         where
@@ -230,7 +224,6 @@ mod tests {
             ST: 'block + Storage<'block, T>,
             SI: 'block + Storage<'block, SparseIndex>,
         {
-
             let mut block = SparseIndexedNumericBlock::new(data, index)
                 .with_context(|_| "failed to create block")
                 .unwrap();
@@ -248,10 +241,12 @@ mod tests {
                 assert_eq!(len, index.len());
 
                 let idx_source = (0..len)
-                    .filter_map(|idx| if idx % 3 == 0 {
-                        Some(idx as SparseIndex)
-                    } else {
-                        None
+                    .filter_map(|idx| {
+                        if idx % 3 == 0 {
+                            Some(idx as SparseIndex)
+                        } else {
+                            None
+                        }
                     })
                     .collect::<Vec<_>>();
                 let idx_len = idx_source.len();
@@ -287,7 +282,6 @@ mod tests {
             ST: 'block + Storage<'block, T>,
             SI: 'block + Storage<'block, SparseIndex>,
         {
-
             let mut block = SparseIndexedNumericBlock::new(data, index)
                 .with_context(|_| "failed to create block")
                 .unwrap();
@@ -305,10 +299,12 @@ mod tests {
                 assert_eq!(len, index.len());
 
                 let idx_source = (0..len)
-                    .filter_map(|idx| if idx % 3 == 0 {
-                        Some(idx as SparseIndex)
-                    } else {
-                        None
+                    .filter_map(|idx| {
+                        if idx % 3 == 0 {
+                            Some(idx as SparseIndex)
+                        } else {
+                            None
+                        }
                     })
                     .collect::<Vec<_>>();
                 let idx_len = idx_source.len();
@@ -342,8 +338,8 @@ mod tests {
     mod memory {
         use super::*;
         use num::{Float, Integer, Zero};
-        use std::mem::size_of;
         use std::fmt::Debug;
+        use std::mem::size_of;
         use std::ops::Not;
 
         use crate::storage::memory::PagedMemoryStorage;
@@ -445,8 +441,8 @@ mod tests {
         use super::*;
         use crate::storage::mmap::MemmapStorage;
         use num::{Float, Integer, Zero};
-        use std::mem::size_of;
         use std::fmt::Debug;
+        use std::mem::size_of;
         use std::ops::Not;
 
         fn make_storage<T>(name: &str) -> (MemmapStorage, MemmapStorage) {
@@ -462,8 +458,9 @@ mod tests {
                 MemmapStorage::new(
                     index,
                     BLOCK_SIZE / size_of::<T>() * size_of::<SparseIndex>(),
-                ).with_context(|_| "failed to create memory storage")
-                    .unwrap(),
+                )
+                .with_context(|_| "failed to create memory storage")
+                .unwrap(),
             )
         }
 

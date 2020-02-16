@@ -1,6 +1,6 @@
 use super::*;
-use crate::ty::fragment::Fragment;
 use crate::block::ColumnIndexType;
+use crate::ty::fragment::Fragment;
 
 pub(crate) const DEFAULT_PARTITION_GROUPS: [SourceId; 3] = [1, 5, 7];
 
@@ -535,8 +535,8 @@ macro_rules! append_test_impl {
 
 #[cfg(all(feature = "nightly", test))]
 mod benches {
-    use test::Bencher;
     use super::*;
+    use test::Bencher;
 
     #[bench]
     fn tiny(b: &mut Bencher) {
@@ -556,7 +556,6 @@ mod benches {
             2 => random!(gen u8, record_count).into(),
             3 => random!(gen u32, record_count).into(),
         };
-
 
         let init = append_test_impl!(init columns);
 
@@ -626,7 +625,7 @@ mod benches {
             1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
         };
 
-        let mut data = hashmap!{};
+        let mut data = hashmap! {};
 
         for idx in 2..column_count {
             columns.insert(
@@ -672,7 +671,6 @@ mod benches {
             2 => random!(gen u8, record_count).into(),
             3 => random!(gen u32, record_count).into(),
         };
-
 
         let init = append_test_impl!(init columns);
 
@@ -736,8 +734,6 @@ mod benches {
         use ty::block::BlockStorage::Memmap;
         use ty::index::ColumnIndexStorage;
 
-
-
         let record_count = 100;
         let text_length = 120;
 
@@ -768,9 +764,12 @@ mod benches {
 
         let mut cat = init.1;
 
-        cat.ensure_indexes(hashmap! {
-            3 => ColumnIndexStorage::Memmap(ColumnIndexType::Bloom),
-        }.into())
+        cat.ensure_indexes(
+            hashmap! {
+                3 => ColumnIndexStorage::Memmap(ColumnIndexType::Bloom),
+            }
+            .into(),
+        )
         .with_context(|_| "ensure index failed")
         .unwrap();
 
@@ -782,8 +781,8 @@ mod benches {
 #[should_panic(expected = "Provided Append contains no data")]
 fn empty() {
     use super::*;
-    use crate::ty::block::BlockStorage::Memmap;
     use crate::block::BlockType as BlockTy;
+    use crate::ty::block::BlockStorage::Memmap;
 
     let now = <Timestamp as Default>::default();
 
@@ -794,7 +793,6 @@ fn empty() {
         },
         now
     );
-
 
     let append = Append {
         ts: Default::default(),
@@ -829,7 +827,7 @@ mod dense {
             },
             now,
             vec![expected],
-            [v.into(), record_count, hashmap!{}, hashmap!{}]
+            [v.into(), record_count, hashmap! {}, hashmap! {}]
         );
     }
 
@@ -984,7 +982,7 @@ mod dense {
                 2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS, MAX_RECORDS)),
                 3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS, MAX_RECORDS)),
             },
-            hashmap!{},
+            hashmap! {},
         ];
 
         append_test_impl!(
@@ -1025,15 +1023,13 @@ mod dense {
             3 => Fragment::from(seqfill!(vec u32, record_count)),
         };
 
-        let expected = vec![
-            hashmap! {
-                0 => <Fragment as From<Vec<Timestamp>>>::from(
-                    merge_iter!(v_1.clone().into_iter(), v_2.clone().into_iter())
-                ),
-                2 => Fragment::from(multiply_vec!(seqfill!(vec u8, record_count), 2)),
-                3 => Fragment::from(multiply_vec!(seqfill!(vec u32, record_count), 2)),
-            },
-        ];
+        let expected = vec![hashmap! {
+            0 => <Fragment as From<Vec<Timestamp>>>::from(
+                merge_iter!(v_1.clone().into_iter(), v_2.clone().into_iter())
+            ),
+            2 => Fragment::from(multiply_vec!(seqfill!(vec u8, record_count), 2)),
+            3 => Fragment::from(multiply_vec!(seqfill!(vec u32, record_count), 2)),
+        }];
 
         append_test_impl!(
             hashmap! {
@@ -1336,11 +1332,11 @@ mod dense {
             1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
         };
 
-        let mut data = hashmap!{};
+        let mut data = hashmap! {};
         let mut expected = hashmap! {
             0 => Fragment::from(v.clone()),
         };
-        let mut counts = hashmap!{};
+        let mut counts = hashmap! {};
 
         for idx in 2..column_count {
             columns.insert(
@@ -1382,23 +1378,21 @@ mod dense {
                 0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
             };
 
-            let expected = v.chunks(MAX_RECORDS).map(|chunk| {
-                hashmap! {
-                    0 => Fragment::from(chunk.to_vec())
-                }
-            }).collect::<Vec<_>>();
+            let expected = v
+                .chunks(MAX_RECORDS)
+                .map(|chunk| {
+                    hashmap! {
+                        0 => Fragment::from(chunk.to_vec())
+                    }
+                })
+                .collect::<Vec<_>>();
 
             append_test_impl!(
                 vec![1],
                 schema,
                 now,
                 expected,
-                [
-                    v.into(),
-                    record_count,
-                    hashmap! {},
-                    hashmap! {},
-                ]
+                [v.into(), record_count, hashmap! {}, hashmap! {},]
             );
         }
 
@@ -1704,7 +1698,6 @@ mod string {
     use super::*;
     use crate::ty::block::BlockStorage::Memmap;
 
-
     mod dense {
         use super::*;
 
@@ -1870,7 +1863,6 @@ mod string {
                 ]
             );
         }
-
     }
 }
 
@@ -1902,12 +1894,7 @@ mod layout {
             },
             now,
             vec![expected],
-            [
-                v.into(),
-                record_count,
-                hashmap! {},
-                data
-            ]
+            [v.into(), record_count, hashmap! {}, data]
         );
     }
 
@@ -1939,14 +1926,8 @@ mod layout {
             // in this case we should be left with fully written partition
             // and a completely empty one
             vec![expected, expected_empty],
-            [
-                v.into(),
-                record_count,
-                hashmap! {},
-                data
-            ]
+            [v.into(), record_count, hashmap! {}, data]
         );
-
     }
 
     // first empty, full write (single partition output)
@@ -1975,14 +1956,8 @@ mod layout {
             },
             now,
             vec![expected1, expected2],
-            [
-                v.into(),
-                record_count,
-                hashmap! {},
-                data
-            ]
+            [v.into(), record_count, hashmap! {}, data]
         );
-
     }
 
     // first with data, non-full write (single partition output)
@@ -2009,18 +1984,8 @@ mod layout {
             },
             now,
             vec![expected],
-            [
-                v.clone().into(),
-                record_count,
-                hashmap! {},
-                data.clone()
-            ],
-            [
-                v.into(),
-                record_count,
-                hashmap! {},
-                data
-            ]
+            [v.clone().into(), record_count, hashmap! {}, data.clone()],
+            [v.into(), record_count, hashmap! {}, data]
         );
     }
 
@@ -2059,18 +2024,8 @@ mod layout {
             // in this case we should be left with fully written partition
             // and a completely empty one
             vec![expected, expected_empty],
-            [
-                v1.into(),
-                record_count_1,
-                hashmap! {},
-                data.clone()
-            ],
-            [
-                v2.into(),
-                record_count_2,
-                hashmap! {},
-                data
-            ]
+            [v1.into(), record_count_1, hashmap! {}, data.clone()],
+            [v2.into(), record_count_2, hashmap! {}, data]
         );
     }
 
@@ -2095,11 +2050,20 @@ mod layout {
         let mut expected1 = data.clone();
         let mut expected2 = data.clone();
 
-        expected1.insert(0, Fragment::from({
-            v1.iter().chain(v2[..MAX_RECORDS - record_count_1].iter()).cloned().collect::<Vec<_>>()
-        }));
+        expected1.insert(
+            0,
+            Fragment::from({
+                v1.iter()
+                    .chain(v2[..MAX_RECORDS - record_count_1].iter())
+                    .cloned()
+                    .collect::<Vec<_>>()
+            }),
+        );
 
-        expected2.insert(0, Fragment::from(v2[MAX_RECORDS - record_count_1..].to_vec()));
+        expected2.insert(
+            0,
+            Fragment::from(v2[MAX_RECORDS - record_count_1..].to_vec()),
+        );
 
         append_test_impl!(
             vec![1],
@@ -2108,18 +2072,8 @@ mod layout {
             },
             now,
             vec![expected1, expected2],
-            [
-                v1.into(),
-                record_count_1,
-                hashmap! {},
-                data.clone()
-            ],
-            [
-                v2.into(),
-                record_count_2,
-                hashmap! {},
-                data
-            ]
+            [v1.into(), record_count_1, hashmap! {}, data.clone()],
+            [v2.into(), record_count_2, hashmap! {}, data]
         );
     }
 }

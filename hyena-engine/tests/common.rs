@@ -7,7 +7,6 @@ pub use tempfile::TempDir;
 
 use hyena_engine::{Catalog, Result};
 
-
 const TEMPDIR_PREFIX: &str = "hyena-int-test";
 
 /// Create temporary directory helper for test code
@@ -59,7 +58,5 @@ pub fn get_columns(catalog: &Catalog) -> Vec<(usize, String)> {
 fn it_wraps_result() {
     // fake use of wrap_result macro
     // to prevent rustc from complaining about unused macro
-    wrap_result!({{
-
-    }})
+    wrap_result!({ {} })
 }

@@ -1,19 +1,19 @@
-use crate::error::*;
-use crate::ty::{BlockStorage, ColumnIndexStorageMap, ColumnId};
 use crate::block::BlockType;
-use crate::storage::manager::PartitionGroupManager;
-use hyena_common::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::iter::FromIterator;
-use std::default::Default;
-use crate::params::{SourceId, CATALOG_METADATA, TIMESTAMP_COLUMN};
+use crate::error::*;
 use crate::mutator::append::Append;
+use crate::params::{SourceId, CATALOG_METADATA, TIMESTAMP_COLUMN};
 use crate::scanner::{Scan, ScanResult};
+use crate::storage::manager::PartitionGroupManager;
+use crate::ty::{BlockStorage, ColumnId, ColumnIndexStorageMap};
+use hyena_common::collections::HashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use std::default::Default;
+use std::iter::FromIterator;
+use std::path::{Path, PathBuf};
 
-use super::{PartitionGroupMap, ColumnMap};
 use super::column::Column;
 use super::partition_group::PartitionGroup;
+use super::{ColumnMap, PartitionGroupMap};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Catalog<'cat> {
@@ -77,33 +77,30 @@ impl<'cat> Catalog<'cat> {
     fn validate_append(&self, data: &Append) -> bool {
         let ts_len = data.ts.len();
 
-        data.data.iter()
-            .all(|(_col, fragment)| {
+        data.data.iter().all(|(_col, fragment)| {
+            // check fragment length for dense blocks
+            if !fragment.is_sparse() {
+                if ts_len != fragment.len() {
+                    error!("Dense append fragment has different length than ts");
 
-                // check fragment length for dense blocks
-                if !fragment.is_sparse() {
-                    if ts_len != fragment.len() {
-                        error!("Dense append fragment has different length than ts");
+                    return false;
+                }
+            } else {
+                if ts_len > fragment.len() {
+                    error!("Sparse append fragment longer than ts");
 
-                        return false;
-                    }
-
-                } else {
-                    if ts_len > fragment.len() {
-                        error!("Sparse append fragment longer than ts");
-
-                        return false;
-                    }
-
-                    if fragment.iter().any(|(idx, _)| idx >= ts_len) {
-                        error!("Sparse append fragment has index greater than ts length");
-
-                        return false;
-                    }
+                    return false;
                 }
 
-                true
-            })
+                if fragment.iter().any(|(idx, _)| idx >= ts_len) {
+                    error!("Sparse append fragment has index greater than ts length");
+
+                    return false;
+                }
+            }
+
+            true
+        })
     }
 
     pub fn append(&self, data: &Append) -> Result<usize> {
@@ -127,7 +124,6 @@ impl<'cat> Catalog<'cat> {
     }
 
     pub fn scan(&self, scan: &Scan) -> Result<ScanResult> {
-
         let all_groups = if scan.groups.is_some() {
             None
         } else {
@@ -148,14 +144,17 @@ impl<'cat> Catalog<'cat> {
                 // todo: this would potentially be better with some short-circuiting combinator
                 // instead
                 // need to bench with collect_into()
-                .reduce(|| Ok(ScanResult::merge_identity()), |a, b| {
-                    let mut a = a?;
-                    let b = b?;
+                .reduce(
+                    || Ok(ScanResult::merge_identity()),
+                    |a, b| {
+                        let mut a = a?;
+                        let b = b?;
 
-                    a.merge(b)?;
+                        a.merge(b)?;
 
-                    Ok(a)
-                })
+                        Ok(a)
+                    },
+                )
         })
         .fold(Ok(ScanResult::merge_identity()), |a, b| {
             let mut a = a?;
@@ -196,7 +195,10 @@ impl<'cat> Catalog<'cat> {
     /// either all columns are added, or no changes are applied.
     pub fn add_columns(&mut self, column_map: ColumnMap) -> Result<()> {
         for (id, column) in column_map.iter() {
-            info!("Adding column {}:{:?} with id {}", column.name, column.ty, id);
+            info!(
+                "Adding column {}:{:?} with id {}",
+                column.name, column.ty, id
+            );
 
             if self.colmap.contains_key(id) {
                 bail!("Column Id already exists {}", *id);
@@ -228,11 +230,15 @@ impl<'cat> Catalog<'cat> {
     /// either all indexes are added, or no changes are applied.
     pub fn add_indexes(&mut self, index_map: ColumnIndexStorageMap) -> Result<()> {
         for (id, index) in index_map.iter() {
-            let column = self.colmap.get(id)
+            let column = self
+                .colmap
+                .get(id)
                 .ok_or_else(|| err_msg(format!("column not found {}", id)))?;
 
-            info!("Adding index {:?} for column {}[{}]:{:?}",
-                index, column.name, id, column.ty);
+            info!(
+                "Adding index {:?} for column {}[{}]:{:?}",
+                index, column.name, id, column.ty
+            );
 
             if self.indexes.contains_key(id) {
                 bail!("Index already exists {}", *id);
@@ -250,9 +256,10 @@ impl<'cat> Catalog<'cat> {
     }
 
     /// Calculate an empty partition's capacity for given column set
-    pub(super) fn space_for_blocks<'iter>(&self, indices: impl Iterator<Item = &'iter ColumnId>)
-    -> usize
-    {
+    pub(super) fn space_for_blocks<'iter>(
+        &self,
+        indices: impl Iterator<Item = &'iter ColumnId>,
+    ) -> usize {
         use crate::params::BLOCK_SIZE;
 
         indices
@@ -323,7 +330,6 @@ impl<'cat> Catalog<'cat> {
             .collect()
     }
 
-
     fn serialize<P: AsRef<Path>>(catalog: &Catalog<'cat>, meta: P) -> Result<()> {
         let meta = meta.as_ref();
 
@@ -343,8 +349,8 @@ impl<'cat> Catalog<'cat> {
             bail!("Cannot find catalog metadata {:?}", meta);
         }
 
-        let (mut catalog, group_metas): (Catalog, Vec<SourceId>) = deserialize!(file meta)
-            .with_context(|_| "Failed to read catalog metadata")?;
+        let (mut catalog, group_metas): (Catalog, Vec<SourceId>) =
+            deserialize!(file meta).with_context(|_| "Failed to read catalog metadata")?;
 
         catalog.groups = Catalog::prepare_partition_groups(&root, group_metas)
             .with_context(|_| "Failed to read partition data")?;
@@ -388,8 +394,8 @@ mod tests {
             .unwrap();
 
         for source_id in &source_ids {
-
-            let pg = cat.ensure_group(*source_id)
+            let pg = cat
+                .ensure_group(*source_id)
                 .with_context(|_| "Unable to retrieve partition group")
                 .unwrap();
 
@@ -411,6 +417,13 @@ mod tests {
         cat.add_partition_group(PG_ID).unwrap();
 
         assert_eq!(cat.groups.len(), 1);
-        assert_eq!(cat.groups.iter().nth(0).expect("partition group not found").0, &PG_ID);
+        assert_eq!(
+            cat.groups
+                .iter()
+                .nth(0)
+                .expect("partition group not found")
+                .0,
+            &PG_ID
+        );
     }
 }

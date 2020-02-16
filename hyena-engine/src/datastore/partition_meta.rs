@@ -1,8 +1,8 @@
 use hyena_common::ty::Timestamp;
 use std::ops::Deref;
 
-use super::PartitionId;
 use super::partition::Partition;
+use super::PartitionId;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, Hash)]
 pub(crate) struct PartitionMeta {

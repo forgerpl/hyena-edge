@@ -3,9 +3,7 @@
 #[macro_export]
 macro_rules! carry {
     ($what: expr) => {
-        (|| {
-            $what
-        })()
+        (|| $what)()
     };
 }
 

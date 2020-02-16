@@ -13,7 +13,6 @@ macro_rules! random {
 
         rng.gen_iter::<$ty>().take($count).collect::<Vec<$ty>>()
     }};
-
 }
 
 #[cfg(test)]
@@ -40,8 +39,8 @@ mod tests {
 }
 
 pub mod timestamp {
-    use rand::{thread_rng, Rng};
     use hyena_common::ty::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
+    use rand::{thread_rng, Rng};
     use std::iter::repeat;
 
     // these should be moved associated when consts stabilize

@@ -4,9 +4,9 @@
 //! attacks, but as we're mostly dealing with the data produced internally,
 //! this shouldn't be a major concern.
 
+pub mod hash;
 pub mod hash_map;
 pub mod hash_set;
-pub mod hash;
 
 pub use self::hash::Hasher;
 

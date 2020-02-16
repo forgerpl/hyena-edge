@@ -1,11 +1,10 @@
 use crate::error::*;
-use regex::{Regex as RegexImpl, escape};
-use std::str::FromStr;
-use std::ops::Deref;
-use std::fmt::{Display, Formatter, self};
+use regex::{escape, Regex as RegexImpl};
+use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::PartialEq;
-use serde::{Serialize, Deserialize, Serializer, Deserializer, de::Error as DeError};
-
+use std::fmt::{self, Display, Formatter};
+use std::ops::Deref;
+use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub struct Regex(RegexImpl);
@@ -60,7 +59,8 @@ impl PartialEq for Regex {
 
 impl Serialize for Regex {
     fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
-        where S: Serializer
+    where
+        S: Serializer,
     {
         self.0.as_str().serialize(serializer)
     }
@@ -68,7 +68,8 @@ impl Serialize for Regex {
 
 impl<'de> Deserialize<'de> for Regex {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-        where D: Deserializer<'de>
+    where
+        D: Deserializer<'de>,
     {
         let rx = <&str>::deserialize(deserializer)?;
 

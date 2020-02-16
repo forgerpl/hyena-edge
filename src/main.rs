@@ -1,7 +1,7 @@
-use log::*;
-use dotenv::dotenv;
-use std::env::{var_os, set_var};
 use colored_logger::FormatterBuilder;
+use dotenv::dotenv;
+use log::*;
+use std::env::{set_var, var_os};
 
 mod cli;
 mod nanoserver;

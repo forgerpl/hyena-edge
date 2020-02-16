@@ -1,11 +1,11 @@
 use crate::block::index::{BloomIndexBlock, ColumnIndexType, ScanIndex};
 use crate::error::*;
+use crate::ty::block::BlockId;
 use hyena_bloom_filter::BloomValue;
 use hyena_common::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 use std::sync::RwLock;
-use crate::ty::block::BlockId;
 
 #[macro_use]
 mod ty_impl;

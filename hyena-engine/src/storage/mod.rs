@@ -1,13 +1,11 @@
 use crate::error::*;
 use std::fmt::Debug;
 
-
+pub(crate) mod memory;
 #[cfg(feature = "mmap")]
 pub(crate) mod mmap;
-pub(crate) mod memory;
 
 pub(crate) mod manager;
-
 
 pub trait Storage<'stor, T: 'stor>: AsRef<[T]> + AsMut<[T]> + Debug {
     fn sync(&mut self) -> Result<()>;

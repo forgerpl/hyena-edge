@@ -1,8 +1,8 @@
+use crate::block;
 use crate::error::*;
 use hyena_common::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
-use crate::block;
 
 #[macro_use]
 pub(crate) mod ty_impl;
@@ -16,7 +16,7 @@ pub type BlockId = usize;
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct BlockHeads {
     pub(crate) head: usize,
-    pub(crate) pool_head: Option<usize>
+    pub(crate) pool_head: Option<usize>,
 }
 
 pub type BlockMap<'block> = HashMap<BlockId, RwLock<Block<'block>>>;
@@ -25,7 +25,6 @@ pub(crate) type BlockHeadMap = HashMap<BlockId, BlockHeads>;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BlockStorageMap(BlockStorageMapType);
 pub(crate) type BlockStorageMapType = HashMap<BlockId, BlockStorage>;
-
 
 impl<'block> Deref for BlockStorageMap {
     type Target = BlockStorageMapType;
@@ -57,7 +56,6 @@ pub enum Block<'block> {
     #[cfg(feature = "mmap")]
     Memmap(mmap::Block<'block>),
 }
-
 
 impl<'block> PartialEq<BlockStorage> for Block<'block> {
     fn eq(&self, rhs: &BlockStorage) -> bool {

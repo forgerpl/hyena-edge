@@ -1,9 +1,9 @@
-use std::hash::{Hash, Hasher, BuildHasher};
-use std::fmt::{Display, Formatter, self};
-use std::marker::PhantomData;
 use crate::bloom_value::{BloomValue, BIT_LENGTH};
 use crate::ngram::{Ngram, Trigram};
+use std::fmt::{self, Display, Formatter};
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::iter::once;
+use std::marker::PhantomData;
 
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub struct BloomFilter<H1, H2, N = Trigram>
@@ -95,13 +95,11 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use fnv::FnvBuildHasher;
     use fxhash::FxBuildHasher;
-
 
     type Filter = BloomFilter<FnvBuildHasher, FxBuildHasher>;
 
@@ -151,8 +149,8 @@ mod tests {
 
     #[cfg(all(feature = "nightly", test))]
     mod benches {
-        use test::{Bencher, black_box};
         use super::*;
+        use test::{black_box, Bencher};
 
         static LOREM: &str = r##"
         Lorem ipsum dolor sit amet consectetur adipiscing elit, dapibus
@@ -166,7 +164,6 @@ mod tests {
         fn prepare_data(length: usize) -> impl AsRef<[u8]> {
             &LOREM[..length]
         }
-
 
         macro_rules! bloom_bench_impl {
             (
@@ -232,7 +229,6 @@ mod tests {
                 )+
             };
         }
-
 
         bloom_bench_impl! {
             Filter,

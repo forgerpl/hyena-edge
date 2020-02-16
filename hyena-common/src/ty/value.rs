@@ -1,7 +1,7 @@
-use std::fmt;
 use crate::ty::timestamp::Timestamp;
-use extprim::u128::u128;
 use extprim::i128::i128;
+use extprim::u128::u128;
+use std::fmt;
 
 macro_rules! value_impl {
     ($( $variant: ident, $ty: ty ),+ $(,)*) => {

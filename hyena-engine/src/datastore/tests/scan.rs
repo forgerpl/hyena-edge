@@ -267,12 +267,11 @@ mod full {
     }
 
     mod pruning {
+        use self::BlockStorage::Memmap;
         use super::*;
         use crate::block::BlockType;
-        use self::BlockStorage::Memmap;
+        use crate::scanner::{ScanFilter, ScanResult};
         use crate::ty::fragment::Fragment;
-        use crate::scanner::{ScanResult, ScanFilter};
-
 
         #[test]
         fn partition() {
@@ -290,17 +289,15 @@ mod full {
                     1 => Column::new(Memmap(BlockType::U32Dense), "source_id"),
                 },
                 now,
-                [
-                    v.into(),
-                    hashmap! {}
-                ]
+                [v.into(), hashmap! {}]
             );
 
             let cat = Catalog::with_data(&td)
                 .with_context(|_| "unable to open catalog")
                 .unwrap();
 
-            let pids = cat.groups
+            let pids = cat
+                .groups
                 .iter()
                 .flat_map(|(_, pg)| {
                     let parts = acquire!(read pg.mutable_partitions);
@@ -308,7 +305,13 @@ mod full {
                         .iter()
                         // is_empty filtering is required because there's an empty
                         // prtition created for each new partition group
-                        .filter_map(|p| if !p.is_empty() { Some(p.get_id()) } else { None })
+                        .filter_map(|p| {
+                            if !p.is_empty() {
+                                Some(p.get_id())
+                            } else {
+                                None
+                            }
+                        })
                         .collect::<Vec<_>>()
                         .into_iter()
                 })
@@ -350,7 +353,7 @@ mod full {
             fn ts_range_test_impl(
                 ts_range: Option<ScanTsRange>,
                 expected_partitions: Option<Vec<usize>>,
-                ts: Option<u64>
+                ts: Option<u64>,
             ) {
                 let now = ts.unwrap_or(1);
 
@@ -359,19 +362,22 @@ mod full {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let expected = expected_partitions.map(|expected_partitions| {
-                    let expected = v.chunks(MAX_RECORDS)
-                        .enumerate()
-                        .filter(|&(idx, _)| expected_partitions.contains(&idx))
-                        .flat_map(|(_, data)| data)
-                        .map(|t| u64::from(*t))
-                        .collect::<Vec<_>>();
+                let expected = expected_partitions
+                    .map(|expected_partitions| {
+                        let expected = v
+                            .chunks(MAX_RECORDS)
+                            .enumerate()
+                            .filter(|&(idx, _)| expected_partitions.contains(&idx))
+                            .flat_map(|(_, data)| data)
+                            .map(|t| u64::from(*t))
+                            .collect::<Vec<_>>();
 
-                    ScanResult::from(hashmap! {
-                        0 => Some(Fragment::from(expected)),
-                        1 => Some(Fragment::from(Vec::<u32>::default())),
+                        ScanResult::from(hashmap! {
+                            0 => Some(Fragment::from(expected)),
+                            1 => Some(Fragment::from(Vec::<u32>::default())),
+                        })
                     })
-                }).unwrap_or_default();
+                    .unwrap_or_default();
 
                 let td = append_test_impl!(
                     [1],
@@ -380,10 +386,7 @@ mod full {
                         1 => Column::new(Memmap(BlockType::U32Dense), "source_id"),
                     },
                     now,
-                    [
-                        v.into(),
-                        hashmap! {}
-                    ]
+                    [v.into(), hashmap! {}]
                 );
 
                 let cat = Catalog::with_data(&td)
@@ -391,12 +394,8 @@ mod full {
                     .unwrap();
 
                 let scan = Scan::new(
-                    None,   // full scan
-                    None,
-                    None,
-                    None,
-                    ts_range,
-                    None,
+                    None, // full scan
+                    None, None, None, ts_range, None,
                 );
 
                 let result = cat.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -412,7 +411,10 @@ mod full {
             #[test]
             fn full() {
                 ts_range_test_impl(
-                    Some(ScanTsRange::Full), Some(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]), None);
+                    Some(ScanTsRange::Full),
+                    Some(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+                    None,
+                );
             }
 
             #[test]
@@ -420,13 +422,20 @@ mod full {
                 let start = Timestamp::from((MAX_RECORDS * 2 + MAX_RECORDS / 2) as u64); // 2,5 =>
                 let end = Timestamp::from((MAX_RECORDS * 6 + MAX_RECORDS / 2) as u64); // => 6,5
                 ts_range_test_impl(
-                    Some(ScanTsRange::Bounded { start, end }), Some(vec![2, 3, 4, 5, 6]), None);
+                    Some(ScanTsRange::Bounded { start, end }),
+                    Some(vec![2, 3, 4, 5, 6]),
+                    None,
+                );
             }
 
             #[test]
             fn left_bound() {
                 let start = Timestamp::from((MAX_RECORDS * 6 + MAX_RECORDS / 2) as u64); // 6,5 =>
-                ts_range_test_impl(Some(ScanTsRange::From { start }), Some(vec![6, 7, 8, 9]), None);
+                ts_range_test_impl(
+                    Some(ScanTsRange::From { start }),
+                    Some(vec![6, 7, 8, 9]),
+                    None,
+                );
             }
 
             #[test]
@@ -445,17 +454,17 @@ mod full {
     }
 
     mod streaming {
+        use self::BlockStorage::Memmap;
         use super::*;
         use crate::block::BlockType;
-        use self::BlockStorage::Memmap;
+        use crate::scanner::{ScanFilter, ScanResult, StreamConfig};
         use crate::ty::fragment::Fragment;
-        use crate::scanner::{ScanResult, ScanFilter, StreamConfig};
         use hyena_test::tempfile::ThingWithTempDir;
 
-
-        fn prepare_stream_data<'cat>(record_count: usize, partition_count: usize)
-        -> Result<ThingWithTempDir<'cat, Catalog<'cat>>>
-        {
+        fn prepare_stream_data<'cat>(
+            record_count: usize,
+            partition_count: usize,
+        ) -> Result<ThingWithTempDir<'cat, Catalog<'cat>>> {
             let now = 1;
 
             let mut v = vec![Timestamp::from(0); record_count];
@@ -484,7 +493,8 @@ mod full {
 
             let cat = Catalog::with_data(&td).with_context(|_| "unable to open catalog")?;
 
-            let pids = cat.groups
+            let pids = cat
+                .groups
                 .iter()
                 .flat_map(|(_, pg)| {
                     let parts = acquire!(read pg.mutable_partitions);
@@ -503,17 +513,10 @@ mod full {
             Ok(ThingWithTempDir::new(cat, td))
         }
 
-        fn fetch_whole_stream<F>
-        (
-            cat: &Catalog,
-            scan: Scan,
-            f: F,
-        )
-        -> Result<ScanResult>
+        fn fetch_whole_stream<F>(cat: &Catalog, scan: Scan, f: F) -> Result<ScanResult>
         where
-            F: FnMut(&ScanResult) -> bool
+            F: FnMut(&ScanResult) -> bool,
         {
-
             let mut state = None;
             let mut accumulated_result = <ScanResult as Default>::default();
             let base_scan = scan;
@@ -554,7 +557,7 @@ mod full {
                     // No more results
                     false
                 }
-            } {};
+            } {}
 
             Ok(accumulated_result)
         }
@@ -580,24 +583,36 @@ mod full {
                 None,
             );
 
-            let expected_result = cat.scan(&scan).with_context(|_| "full scan failed").unwrap();
+            let expected_result = cat
+                .scan(&scan)
+                .with_context(|_| "full scan failed")
+                .unwrap();
 
             let mut chunks = 0;
 
-            let accumulated_result = fetch_whole_stream(&cat, Scan::new(
-                Some(hashmap! {
-                    2 => vec![vec![ScanFilter::U8(ScanFilterOp::Eq(4))]],
-                }),
-                None,
-                None,
-                None,
-                None,
-                Some(StreamConfig {
-                    row_limit: MAX_RECORDS / PARTITION_COUNT - 500,
-                    threshold: 1000,
-                    state: None,
-                }),
-            ), |_| {chunks += 1; true}).with_context(|_| "fetch stream failed").unwrap();
+            let accumulated_result = fetch_whole_stream(
+                &cat,
+                Scan::new(
+                    Some(hashmap! {
+                        2 => vec![vec![ScanFilter::U8(ScanFilterOp::Eq(4))]],
+                    }),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(StreamConfig {
+                        row_limit: MAX_RECORDS / PARTITION_COUNT - 500,
+                        threshold: 1000,
+                        state: None,
+                    }),
+                ),
+                |_| {
+                    chunks += 1;
+                    true
+                },
+            )
+            .with_context(|_| "fetch stream failed")
+            .unwrap();
 
             assert_eq!(EXPECTED_CHUNKS, chunks);
             assert_eq!(expected_result, accumulated_result);
@@ -615,20 +630,25 @@ mod full {
                 .with_context(|_| "stream data preparation failed")
                 .unwrap();
 
-            fetch_whole_stream(&cat, Scan::new(
-                Some(hashmap! {
-                    2 => vec![vec![ScanFilter::U8(ScanFilterOp::Eq(4))]],
-                }),
-                None,
-                None,
-                None,
-                None,
-                Some(StreamConfig {
-                    row_limit: 100,
-                    threshold: 1000,
-                    state: None,
-                }),
-            ), |_| true).unwrap();
+            fetch_whole_stream(
+                &cat,
+                Scan::new(
+                    Some(hashmap! {
+                        2 => vec![vec![ScanFilter::U8(ScanFilterOp::Eq(4))]],
+                    }),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(StreamConfig {
+                        row_limit: 100,
+                        threshold: 1000,
+                        state: None,
+                    }),
+                ),
+                |_| true,
+            )
+            .unwrap();
         }
     }
 
@@ -636,17 +656,13 @@ mod full {
         use super::*;
 
         fn u8_filter<T, F>(data: Vec<T>, val: F) -> Vec<T>
-            where
-                T: Ord,
-                F: Fn(u8) -> bool,
+        where
+            T: Ord,
+            F: Fn(u8) -> bool,
         {
             data.into_iter()
                 .enumerate()
-                .filter_map(|(idx, v)| if val(idx as u8) {
-                    Some(v)
-                }  else {
-                    None
-                })
+                .filter_map(|(idx, v)| if val(idx as u8) { Some(v) } else { None })
                 .collect::<Vec<_>>()
         }
 
@@ -684,8 +700,8 @@ mod full {
 
     mod sparse {
         use super::*;
-        use std::ops::{Add, AddAssign, Sub};
         use num::{FromPrimitive, Zero};
+        use std::ops::{Add, AddAssign, Sub};
 
         // Help generate ts data for the test expectation
         //
@@ -693,23 +709,16 @@ mod full {
         // This helper filters out every 4th record and additionally checks the
         // accopanying value of the record
         fn u8_dense_filter<T, R, F>(data: Vec<T>, val: F, sparse_ratio: R) -> Vec<T>
-            where
-                T: Ord,
-                R: Ord +
-                    Copy +
-                    FromPrimitive +
-                    Sub<Output = R> +
-                    Add<Output = R> +
-                    AddAssign +
-                    Zero,
-                F: Fn(u8) -> bool,
+        where
+            T: Ord,
+            R: Ord + Copy + FromPrimitive + Sub<Output = R> + Add<Output = R> + AddAssign + Zero,
+            F: Fn(u8) -> bool,
         {
             let one = R::from_u8(1).expect("Unable to convert value");
             let ratio = sparse_ratio - one;
 
             data.into_iter()
-                .scan((ratio, 0_u8),
-                    |&mut (ref mut pos, ref mut idx), v| {
+                .scan((ratio, 0_u8), |&mut (ref mut pos, ref mut idx), v| {
                     *pos += one;
                     if *pos > ratio {
                         *pos = R::zero();
@@ -723,7 +732,7 @@ mod full {
                         } else {
                             Some(None)
                         }
-                    }  else {
+                    } else {
                         Some(None)
                     }
                 })
@@ -737,17 +746,19 @@ mod full {
         // This helper filters out generated values from a sparse data
         // while translating resulting rowidx values
         // so the resulting sparse column looks like a dense one (no nulls)
-        fn u8_sparse_filter<T, F>(data: Vec<T>, index: Vec<SparseIndex>, val: F)
-            -> (Vec<T>, Vec<SparseIndex>)
-            where T: Ord + PartialEq + From<u8> + Copy,
-                F: Fn(T) -> bool,
+        fn u8_sparse_filter<T, F>(
+            data: Vec<T>,
+            index: Vec<SparseIndex>,
+            val: F,
+        ) -> (Vec<T>, Vec<SparseIndex>)
+        where
+            T: Ord + PartialEq + From<u8> + Copy,
+            F: Fn(T) -> bool,
         {
             data.into_iter()
                 .zip(index.into_iter())
                 .scan(0_usize, |projected_idx, (v, _)| {
-                    if {
-                        val(v)
-                    } {
+                    if { val(v) } {
                         Some(Some((v, {
                             let t = *projected_idx;
                             *projected_idx += 1;
@@ -800,10 +811,10 @@ mod full {
 ///
 /// The 'light' suite
 mod minimal {
-    use super::*;
-    use crate::ty::fragment::Fragment;
-    use crate::scanner::ScanFilter;
     use self::BlockStorage::Memmap;
+    use super::*;
+    use crate::scanner::ScanFilter;
+    use crate::ty::fragment::Fragment;
 
     /// Helper for 'minimal' scan tests
     ///
@@ -1580,14 +1591,7 @@ mod minimal {
             4 => Some(Fragment::from((vec![10_u16, 20, 30, 7, 8], vec![0_u32, 1, 5, 8, 9]))),
         });
 
-        let scan = Scan::new(
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let scan = Scan::new(None, None, None, None, None, None);
 
         let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
@@ -2064,7 +2068,6 @@ mod minimal {
             fn scan_matches_utf8() {
                 scan_matches_utf8_impl(true)
             }
-
         }
 
         #[test]
@@ -2131,14 +2134,14 @@ mod minimal {
     mod and_op {
         use super::*;
 
-//             dense1 < 3 && dense2 > 30
-//             +--------+----+--------+---------+--------+---------+
-//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
-//             +--------+----+--------+---------+--------+---------+
-//             |   0    | 4  | 2      | 2       | 40     |         |
-//             +--------+----+--------+---------+--------+---------+
-//             |   1    | 7  | 1      |         | 40     |         |
-//             +--------+----+--------+---------+--------+---------+
+        //             dense1 < 3 && dense2 > 30
+        //             +--------+----+--------+---------+--------+---------+
+        //             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+        //             +--------+----+--------+---------+--------+---------+
+        //             |   0    | 4  | 2      | 2       | 40     |         |
+        //             +--------+----+--------+---------+--------+---------+
+        //             |   1    | 7  | 1      |         | 40     |         |
+        //             +--------+----+--------+---------+--------+---------+
         #[test]
         fn two_dense_one_block() {
             let (_td, catalog, _) = scan_minimal_init!(ops);
@@ -2168,14 +2171,14 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-//             sparse1 < 4 && sparse2 > 15
-//             +--------+----+--------+---------+--------+---------+
-//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
-//             +--------+----+--------+---------+--------+---------+
-//             |   0    | 2  | 6      | 1       | 20     | 20      |
-//             +--------+----+--------+---------+--------+---------+
-//             |   1    | 6  | 4      | 3       | 50     | 30      |
-//             +--------+----+--------+---------+--------+---------+
+        //             sparse1 < 4 && sparse2 > 15
+        //             +--------+----+--------+---------+--------+---------+
+        //             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+        //             +--------+----+--------+---------+--------+---------+
+        //             |   0    | 2  | 6      | 1       | 20     | 20      |
+        //             +--------+----+--------+---------+--------+---------+
+        //             |   1    | 6  | 4      | 3       | 50     | 30      |
+        //             +--------+----+--------+---------+--------+---------+
         #[test]
         fn two_sparse_one_block() {
             let (_td, catalog, _) = scan_minimal_init!(ops);
@@ -2205,12 +2208,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-//             dense1 > 4 && sparse2 < 15
-//             +--------+----+--------+---------+--------+---------+
-//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
-//             +--------+----+--------+---------+--------+---------+
-//             |   0    | 1  | 5      |         | 10     | 10      |
-//             +--------+----+--------+---------+--------+---------+
+        //             dense1 > 4 && sparse2 < 15
+        //             +--------+----+--------+---------+--------+---------+
+        //             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+        //             +--------+----+--------+---------+--------+---------+
+        //             |   0    | 1  | 5      |         | 10     | 10      |
+        //             +--------+----+--------+---------+--------+---------+
         #[test]
         fn sparse_dense_one_block() {
             let (_td, catalog, _) = scan_minimal_init!(ops);
@@ -2261,8 +2264,10 @@ mod minimal {
             }
 
             if merge(&a, &b) != result && merge(&b, &a) != result {
-                panic!("ScanResult assertion failed: {:?} != {:?} + {:?}",
-                    result, a, b);
+                panic!(
+                    "ScanResult assertion failed: {:?} != {:?} + {:?}",
+                    result, a, b
+                );
             }
         }
 
@@ -2439,8 +2444,8 @@ mod minimal {
 
 #[cfg(all(feature = "nightly", test))]
 mod benches {
-    use test::Bencher;
     use super::*;
+    use test::Bencher;
 
     macro_rules! scan_bench_impl {
         (dense simple $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {

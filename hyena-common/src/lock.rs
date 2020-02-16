@@ -39,5 +39,5 @@ macro_rules! acquire {
 macro_rules! locked {
     (rw $val: expr) => {
         RwLock::new($val)
-    }
+    };
 }

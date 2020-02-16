@@ -1,6 +1,6 @@
 use crate::block::BlockData;
-use std::fmt::Debug;
 use crate::ty::RowId;
+use std::fmt::Debug;
 
 mod bloom;
 

@@ -3,16 +3,18 @@ use crate::error::*;
 use crate::fs::ensure_file;
 use memmap::{MmapMut, MmapOptions};
 
-use std::path::{Path, PathBuf};
 use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 
-use super::{Storage, Realloc, ByteStorage};
+use super::{ByteStorage, Realloc, Storage};
 
 use hyena_common::map_type::{map_type, map_type_mut};
 
-
-pub fn map_file<P: AsRef<Path>>(path: P, create_size: usize, existing_size: Option<usize>)
--> Result<MmapMut> {
+pub fn map_file<P: AsRef<Path>>(
+    path: P,
+    create_size: usize,
+    existing_size: Option<usize>,
+) -> Result<MmapMut> {
     let file = ensure_file(path, create_size, existing_size)?;
 
     unsafe {
@@ -41,12 +43,12 @@ impl MemmapStorage {
     pub fn with_size_hint<P: AsRef<Path>>(
         file: P,
         create_size: usize,
-        existing_size: Option<usize>
+        existing_size: Option<usize>,
     ) -> Result<MemmapStorage> {
         let path = file.as_ref().to_path_buf();
 
-        let mmap = map_file(&path, create_size, existing_size)
-            .with_context(|_| "unable to mmap file")?;
+        let mmap =
+            map_file(&path, create_size, existing_size).with_context(|_| "unable to mmap file")?;
 
         Ok(Self { mmap, path })
     }
@@ -60,9 +62,11 @@ impl Default for MemmapStorage {
     fn default() -> Self {
         MemmapStorage {
             // TODO: this is very suboptimal, as it still causes a full page to be allocated
-            mmap: MmapOptions::new().len(1).map_anon()
-                    .with_context(|_| "empty memmap failed")
-                    .unwrap(),
+            mmap: MmapOptions::new()
+                .len(1)
+                .map_anon()
+                .with_context(|_| "empty memmap failed")
+                .unwrap(),
             path: Default::default(),
         }
     }
@@ -189,8 +193,7 @@ mod tests {
 
         assert_file_size!(file, FILE_SIZE);
 
-        let buf: [u8; TEST_BYTES_LEN * 2] =
-            ensure_read!(file, [0; TEST_BYTES_LEN * 2], FILE_SIZE);
+        let buf: [u8; TEST_BYTES_LEN * 2] = ensure_read!(file, [0; TEST_BYTES_LEN * 2], FILE_SIZE);
 
         assert_eq!(&TEST_BYTES[..], &buf[..TEST_BYTES_LEN]);
         assert_eq!(&TEST_BYTES[..], &buf[TEST_BYTES_LEN..TEST_BYTES_LEN * 2]);
@@ -208,7 +211,8 @@ mod tests {
             &mut storage.as_mut()[..TEST_BYTES_LEN].copy_from_slice(&TEST_BYTES[..]);
 
             // realloc
-            storage.realloc(FILE_SIZE / 2)
+            storage
+                .realloc(FILE_SIZE / 2)
                 .with_context(|_| "unable to realloc MemmapStorage")
                 .unwrap();
         }
@@ -232,7 +236,8 @@ mod tests {
             &mut storage.as_mut()[..TEST_BYTES_LEN].copy_from_slice(&TEST_BYTES[..]);
 
             // realloc
-            storage.realloc(FILE_SIZE * 2)
+            storage
+                .realloc(FILE_SIZE * 2)
                 .with_context(|_| "unable to realloc MemmapStorage")
                 .unwrap();
         }

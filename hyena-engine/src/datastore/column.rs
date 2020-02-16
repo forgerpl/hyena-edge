@@ -1,5 +1,5 @@
-use crate::ty::{BlockStorage, BlockStorageType};
 use crate::block::BlockType;
+use crate::ty::{BlockStorage, BlockStorageType};
 use std::fmt::{Display, Error as FmtError, Formatter};
 use std::ops::Deref;
 use std::result::Result as StdResult;

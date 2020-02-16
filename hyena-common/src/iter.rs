@@ -1,7 +1,6 @@
 use std::fmt;
 use std::iter::FusedIterator;
 
-
 pub trait IteratorExt: Iterator {
     fn threshold_take_while<P>(self, predicate: P) -> ThresholdTakeWhile<Self, P>
     where
@@ -17,7 +16,6 @@ pub trait IteratorExt: Iterator {
 }
 
 impl<I: Iterator> IteratorExt for I {}
-
 
 #[derive(Clone)]
 pub struct ThresholdTakeWhile<I, P> {
@@ -75,4 +73,5 @@ impl<I, P> FusedIterator for ThresholdTakeWhile<I, P>
 where
     I: FusedIterator,
     P: FnMut(&I::Item) -> Option<bool>,
-{}
+{
+}

@@ -1,6 +1,6 @@
+use failure::ResultExt;
 use hyena_engine::Result;
 pub(crate) use hyena_test::tempfile::VolatileTempDir as TempDir;
-use failure::ResultExt;
 
 const TEMPDIR_PREFIX: &str = "hyena-criterion-bench";
 

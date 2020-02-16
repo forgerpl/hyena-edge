@@ -1,11 +1,11 @@
 use super::ScanIndex;
 use crate::block::{BlockData, BufferHead, IndexMut, IndexRef};
 use crate::error::*;
+use crate::storage::Storage;
+use crate::ty::RowId;
 use hyena_bloom_filter::{BloomValue, DefaultBloomFilter};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use crate::storage::Storage;
-use crate::ty::RowId;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EmptyIndex;
@@ -34,9 +34,8 @@ where
     }
 }
 
-impl<'si, S> BlockData<'si, BloomValue, EmptyIndex> for BloomIndexBlock<'si, S>
-where
-    S: 'si + Storage<'si, BloomValue>,
+impl<'si, S> BlockData<'si, BloomValue, EmptyIndex> for BloomIndexBlock<'si, S> where
+    S: 'si + Storage<'si, BloomValue>
 {
 }
 

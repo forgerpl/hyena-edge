@@ -1,14 +1,11 @@
 use crate::block::{BlockData, BufferHead, IndexMut, IndexRef, RelativeSlice};
 use crate::error::*;
-use std::marker::PhantomData;
 use crate::storage::{Realloc, Storage};
 use crate::ty::RowId;
-
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DenseIndex;
-
-
 
 #[derive(Debug)]
 pub struct DenseStringBlock<'block, S, P>
@@ -108,9 +105,11 @@ where
     }
 
     fn set_pool_head(&mut self, head: usize) {
-        assert!(head <= self.pool.len(),
+        assert!(
+            head <= self.pool.len(),
             "head pointer for the pool block exceeds the block size; \
-            perhaps pool file is corrupt?");
+            perhaps pool file is corrupt?"
+        );
 
         self.pool_head = head;
     }
@@ -186,8 +185,8 @@ mod tests {
 
     mod generic {
         use super::*;
-        use std::mem::size_of;
         use crate::storage::ByteStorage;
+        use std::mem::size_of;
 
         pub(super) fn string_data_gen(payload_len: usize) -> Vec<u8> {
             [b'X', b'x', b'Y']
@@ -365,8 +364,8 @@ mod tests {
     #[cfg(feature = "mmap")]
     mod mmap {
         use super::*;
-        use std::path::Path;
         use crate::storage::mmap::MemmapStorage;
+        use std::path::Path;
 
         fn make_storage(dir: impl AsRef<Path>, name: &str, size: usize) -> MemmapStorage {
             let mut file = dir.as_ref().to_path_buf();

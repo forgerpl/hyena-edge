@@ -1,5 +1,7 @@
-use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap,
-                   Fragment, SparseIndex, Timestamp, TimestampFragment};
+use hyena_engine::{
+    Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap, Fragment, SparseIndex,
+    Timestamp, TimestampFragment,
+};
 use std::iter::{once, repeat};
 
 #[macro_use]
@@ -10,15 +12,22 @@ use crate::common::{catalog_dir, get_columns, wrap_result};
 // create 100 dense columns
 // and 1k sparse columns of type U64
 fn build_schema() -> ColumnMap {
-    (2..102).map(|idx| {
-        let name = format!("dense{}", idx);
-        (idx, Column::new(BlockStorage::Memmap(BlockType::U64Dense), &name))
-    }).chain(
-        (102..1102).map(|idx| {
-            let name = format!("sparse{}", idx);
-            (idx, Column::new(BlockStorage::Memmap(BlockType::U64Sparse), &name))
+    (2..102)
+        .map(|idx| {
+            let name = format!("dense{}", idx);
+            (
+                idx,
+                Column::new(BlockStorage::Memmap(BlockType::U64Dense), &name),
+            )
         })
-    ).collect()
+        .chain((102..1102).map(|idx| {
+            let name = format!("sparse{}", idx);
+            (
+                idx,
+                Column::new(BlockStorage::Memmap(BlockType::U64Sparse), &name),
+            )
+        }))
+        .collect()
 }
 
 #[test]
@@ -74,13 +83,16 @@ fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment
             .collect::<Vec<SparseIndex>>(),
     ));
 
-    let data = (2..102).map(|idx| (idx, densefrag.clone()))
-    .chain((102..1102).filter_map(|idx| if (idx - 2) % 10 == 0 {
-            Some( (idx, sparsefrag.clone()))
-        } else {
-            None
+    let data = (2..102)
+        .map(|idx| (idx, densefrag.clone()))
+        .chain((102..1102).filter_map(|idx| {
+            if (idx - 2) % 10 == 0 {
+                Some((idx, sparsefrag.clone()))
+            } else {
+                None
+            }
         }))
-    .collect::<BlockData>();
+        .collect::<BlockData>();
 
     (tsfrag, data)
 }

@@ -6,8 +6,8 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 pub type UuidBytes = [u8; BUFFER_SIZE];
 const BUFFER_SIZE: usize = 16;
 
-use serde::ser::{Serialize, SerializeTuple, Serializer};
 use serde::de::{Deserialize, Deserializer};
+use serde::ser::{Serialize, SerializeTuple, Serializer};
 
 /// Uuid type for use in Hyena
 ///

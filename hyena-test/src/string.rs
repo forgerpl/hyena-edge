@@ -1,6 +1,5 @@
-use lipsum::{lipsum, MarkovChain, LOREM_IPSUM, LIBER_PRIMUS};
+use lipsum::{lipsum, MarkovChain, LIBER_PRIMUS, LOREM_IPSUM};
 use rand::ThreadRng;
-
 
 pub fn ipsum_text(nwords: usize) -> String {
     lipsum(nwords)
@@ -85,7 +84,7 @@ mod tests {
 
     #[test]
     fn ipsum() {
-        assert_eq!("Lorem ipsum dolor sit amet." , &ipsum_text(5));
+        assert_eq!("Lorem ipsum dolor sit amet.", &ipsum_text(5));
     }
 
     #[test]
@@ -97,20 +96,28 @@ mod tests {
 
     #[test]
     fn iter() {
-
         let generated = text!(iter it, {
             it.take(10).map(|s| s.to_owned()).collect::<Vec<_>>()
         });
 
-        let expected = ["Lorem", "ipsum", "dolor", "sit", "amet,",
-            "consectetur", "adipiscing", "elit,", "sed", "do"];
+        let expected = [
+            "Lorem",
+            "ipsum",
+            "dolor",
+            "sit",
+            "amet,",
+            "consectetur",
+            "adipiscing",
+            "elit,",
+            "sed",
+            "do",
+        ];
 
         assert_eq!(&expected[..], &generated[..]);
     }
 
     #[test]
     fn iter_random() {
-
         let generated = text!(iter random it, {
             it.take(10).map(|s| s.to_owned()).collect::<Vec<_>>()
         });
@@ -120,18 +127,26 @@ mod tests {
 
     #[test]
     fn gen() {
-
         let generated = text!(gen 10);
 
-        let expected = ["Lorem", "ipsum", "dolor", "sit", "amet,",
-            "consectetur", "adipiscing", "elit,", "sed", "do"];
+        let expected = [
+            "Lorem",
+            "ipsum",
+            "dolor",
+            "sit",
+            "amet,",
+            "consectetur",
+            "adipiscing",
+            "elit,",
+            "sed",
+            "do",
+        ];
 
         assert_eq!(&expected[..], &generated[..]);
     }
 
     #[test]
     fn gen_random() {
-
         let generated = text!(gen random 10);
 
         assert_eq!(generated.len(), 10);
@@ -139,7 +154,6 @@ mod tests {
 
     #[test]
     fn gen_frag() {
-
         let generated = text!(gen frag 10, 5);
 
         let expected = (0..10).map(|_| ipsum_text(5)).collect::<Vec<_>>();
@@ -149,7 +163,6 @@ mod tests {
 
     #[test]
     fn gen_random_frag() {
-
         let generated = text!(gen frag random 10, 5);
 
         assert_eq!(generated.len(), 10);

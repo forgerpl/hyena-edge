@@ -1,4 +1,4 @@
-use crate::block::{DenseNumericBlock, SparseIndexedNumericBlock, DenseStringBlock};
+use crate::block::{DenseNumericBlock, DenseStringBlock, SparseIndexedNumericBlock};
 use extprim::i128::i128;
 use extprim::u128::u128;
 

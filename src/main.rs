@@ -16,6 +16,7 @@ extern crate nanomsg_multi_server;
 
 use dotenv::dotenv;
 use std::env::{var_os, set_var};
+use colored_logger::FormatterBuilder;
 
 mod cli;
 mod nanoserver;
@@ -51,8 +52,9 @@ fn main() {
 
     let options = cli::app().get_matches();
 
+    let formatter = FormatterBuilder::default().build();
     flexi_logger::Logger::with_env()
-        .format(colored_logger::formatter)
+        .format(formatter)
         .start()
         .expect("Logger initialization failed");
 

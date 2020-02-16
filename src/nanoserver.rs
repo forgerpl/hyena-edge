@@ -2,7 +2,7 @@ use clap;
 use std::fs;
 use futures::{Future, Stream};
 use tokio_core::reactor::Core;
-use bincode::{serialize, Infinite};
+use bincode::serialize;
 
 use nanomsg_multi_server::{MultiServer, MultiServerFutures};
 use nanomsg_multi_server::proto::{PeerReply, PeerRequest, PeerError};
@@ -43,7 +43,7 @@ fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
 
     trace!("Returning: {}", reply);
 
-    serialize(&reply, Infinite)
+    serialize(&reply)
         .expect("Reply serialization error")
 }
 

@@ -1,11 +1,11 @@
 use super::ScanIndex;
-use block::{BlockData, BufferHead, IndexMut, IndexRef};
-use error::*;
+use crate::block::{BlockData, BufferHead, IndexMut, IndexRef};
+use crate::error::*;
 use hyena_bloom_filter::{BloomValue, DefaultBloomFilter};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use storage::Storage;
-use ty::RowId;
+use crate::storage::Storage;
+use crate::ty::RowId;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EmptyIndex;

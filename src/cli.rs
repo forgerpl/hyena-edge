@@ -1,4 +1,4 @@
-use clap::{App, Arg};
+use clap::{App, Arg, app_from_crate, crate_name, crate_version, crate_authors, crate_description};
 
 static PORT_NUMBER_ERROR_STRING: &'static str = "Port number must be between 1 and 65535";
 
@@ -98,7 +98,7 @@ pub fn app() -> App<'static, 'static> {
 mod tests {
 
     mod validate_port {
-        use cli::validate_port;
+        use crate::cli::validate_port;
 
         #[test]
         fn rejects_empty_string() {

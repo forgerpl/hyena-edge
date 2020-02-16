@@ -1,8 +1,8 @@
-use error::*;
+use crate::error::*;
 use hyena_common::ty::Uuid;
 
-use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap,
+use crate::block::{BlockData, BufferHead, SparseIndex};
+use crate::ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap,
 ColumnId, RowId, ColumnIndexMap, ColumnIndexStorage, ColumnIndexStorageMap};
 use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
@@ -10,12 +10,12 @@ use std::cmp::{max, min};
 use hyena_common::collections::{HashMap, HashSet};
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
-use params::{PARTITION_METADATA, TIMESTAMP_COLUMN};
+use crate::params::{PARTITION_METADATA, TIMESTAMP_COLUMN};
 use std::sync::RwLock;
 use std::iter::FromIterator;
-use ty::fragment::{Fragment, TimestampFragmentRef};
-use mutator::BlockRefData;
-use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange, BloomFilterValues};
+use crate::ty::fragment::{Fragment, TimestampFragmentRef};
+use crate::mutator::BlockRefData;
+use crate::scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange, BloomFilterValues};
 
 
 pub(crate) type PartitionId = Uuid;
@@ -441,7 +441,7 @@ impl<'part> Partition<'part> {
                                 }
                             })
                         }, {
-                            use ty::{SparseIter, SparseIterator};
+                            use crate::ty::{SparseIter, SparseIterator};
 
                             let (index, data) = blk.as_indexed_slice();
 
@@ -747,7 +747,7 @@ impl<'part> Partition<'part> {
             .iter()
             .map(|(block_id, block_type)| match *block_type {
                 BlockStorage::Memory(bty) => {
-                    use ty::block::memory::Block;
+                    use crate::ty::block::memory::Block;
 
                     Block::create(bty)
                         .map(|block| (*block_id, locked!(rw block.into())))
@@ -755,7 +755,7 @@ impl<'part> Partition<'part> {
                         .map_err(|e| e.into())
                 }
                 BlockStorage::Memmap(bty) => {
-                    use ty::block::mmap::Block;
+                    use crate::ty::block::mmap::Block;
 
                     Block::create(&root, bty, *block_id)
                         .map(|block| (*block_id, locked!(rw block.into())))
@@ -781,7 +781,7 @@ impl<'part> Partition<'part> {
             .iter()
             .map(|(block_id, index_type)| match *index_type {
                 ColumnIndexStorage::Memory(colidx) => {
-                    use ty::index::memory::ColumnIndex;
+                    use crate::ty::index::memory::ColumnIndex;
 
                     ColumnIndex::create(colidx)
                         .map(|block| (*block_id, locked!(rw block.into())))
@@ -789,7 +789,7 @@ impl<'part> Partition<'part> {
                         .map_err(|e| e.into())
                 }
                 ColumnIndexStorage::Memmap(colidx) => {
-                    use ty::index::mmap::ColumnIndex;
+                    use crate::ty::index::mmap::ColumnIndex;
 
                     ColumnIndex::create(&root, colidx, *block_id)
                         .map(|block| (*block_id, locked!(rw block.into())))
@@ -899,11 +899,11 @@ impl<'part> Drop for Partition<'part> {
 mod tests {
     use super::*;
     use hyena_common::collections::HashMap;
-    use ty::block::{Block, BlockStorage, BlockId};
+    use crate::ty::block::{Block, BlockStorage, BlockId};
     use std::fmt::Debug;
     use hyena_test::random::timestamp::{RandomTimestamp, RandomTimestampGen};
-    use block::BlockData;
-    use ty::fragment::Fragment;
+    use crate::block::BlockData;
+    use crate::ty::fragment::Fragment;
 
 
     macro_rules! block_test_impl_mem {
@@ -1115,7 +1115,7 @@ mod tests {
     }
 
     fn meta_ts(ts_ty: BlockStorage) {
-        use ty::fragment::FragmentRef;
+        use crate::ty::fragment::FragmentRef;
 
         let root = tempdir!();
         let row_count = 100;
@@ -1240,9 +1240,9 @@ mod tests {
 
         macro_rules! scan_test_init {
             () => {{
-                use block::BlockType;
+                use crate::block::BlockType;
                 use self::BlockStorage::Memory;
-                use ty::fragment::FragmentRef;
+                use crate::ty::fragment::FragmentRef;
 
                 let root = tempdir!();
 
@@ -1286,7 +1286,7 @@ mod tests {
 
         mod filter {
             use super::*;
-            use scanner::{ScanFilter, ScanFilterOp};
+            use crate::scanner::{ScanFilter, ScanFilterOp};
 
             mod and {
                 use super::*;
@@ -1581,9 +1581,9 @@ mod tests {
     #[test]
     fn space_for_blocks() {
         use rayon::iter::IntoParallelRefMutIterator;
-        use block::{BlockType, BlockData};
+        use crate::block::{BlockType, BlockData};
         use std::mem::size_of;
-        use params::BLOCK_SIZE;
+        use crate::params::BLOCK_SIZE;
         use std::iter::FromIterator;
         use self::BlockStorage::Memory;
 
@@ -1634,8 +1634,8 @@ mod tests {
 
     mod ts {
         use super::*;
-        use ty::fragment::FragmentRef;
-        use block::BlockType;
+        use crate::ty::fragment::FragmentRef;
+        use crate::block::BlockType;
         use self::BlockStorage::Memory;
 
         macro_rules! ts_test_init {
@@ -1890,7 +1890,7 @@ mod tests {
 
     mod memory {
         use super::*;
-        use block::BlockType;
+        use crate::block::BlockType;
         use self::BlockStorage::Memory;
 
         #[test]
@@ -1973,7 +1973,7 @@ mod tests {
     #[cfg(feature = "mmap")]
     mod mmap {
         use super::*;
-        use block::BlockType;
+        use crate::block::BlockType;
         use self::BlockStorage::Memmap;
 
         #[test]

@@ -29,7 +29,7 @@ macro_rules! assert_variant {
 #[macro_export]
 macro_rules! ensure_read {
     ($file: expr, $buf: expr, $size: expr, $existing_size: expr) => {{
-        use fs::ensure_file;
+        use crate::fs::ensure_file;
         use std::io::Read;
 
 
@@ -52,7 +52,7 @@ macro_rules! ensure_read {
 #[macro_export]
 macro_rules! ensure_write {
     ($file: expr, $w: expr, $size: expr, $existing_size: expr) => {{
-        use fs::ensure_file;
+        use crate::fs::ensure_file;
         use std::io::Write;
 
 

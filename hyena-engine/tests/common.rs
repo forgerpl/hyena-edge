@@ -1,13 +1,9 @@
-extern crate hyena_engine;
-extern crate hyena_test;
-extern crate failure;
+use failure::ResultExt;
 
-use self::failure::ResultExt;
-
-use self::hyena_test::tempfile;
+use hyena_test::tempfile;
 
 // set `persistent_test_data` to make temp dirs persistent
-pub use self::tempfile::TempDir;
+pub use tempfile::TempDir;
 
 use hyena_engine::{Catalog, Result};
 

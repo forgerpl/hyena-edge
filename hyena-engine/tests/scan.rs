@@ -1,8 +1,3 @@
-extern crate hyena_engine;
-extern crate hyena_test;
-extern crate hyena_common;
-extern crate failure;
-
 use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap,
                    Fragment, Result, Scan, ScanFilter, ScanFilterOp, ScanResult,
                    SparseIndex, Timestamp, TimestampFragment};
@@ -13,7 +8,7 @@ use hyena_common::collections::HashMap;
 #[macro_use]
 mod common;
 
-use common::{catalog_dir, wrap_result, TempDir};
+use crate::common::{catalog_dir, wrap_result, TempDir};
 
 fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment, BlockData) {
     let tsfrag = TimestampFragment::from(

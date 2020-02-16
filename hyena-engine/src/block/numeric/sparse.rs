@@ -169,7 +169,7 @@ mod tests {
                     .unwrap();
 
                 let s = [!$T::zero(), $T::zero(), !$T::zero()];
-                let source = s.into_iter().cycle();
+                let source = s.iter().cycle();
 
                 let len = {
                     // write every 3rd index
@@ -236,7 +236,7 @@ mod tests {
                 .unwrap();
 
             let s = [!T::zero(), T::zero(), !T::zero()];
-            let source = s.into_iter().cycle();
+            let source = s.iter().cycle();
 
             let len = {
                 // write every 3rd index
@@ -293,7 +293,7 @@ mod tests {
                 .unwrap();
 
             let s = [T::max_value(), T::zero(), T::max_value()];
-            let source = s.into_iter().cycle();
+            let source = s.iter().cycle();
 
             let len = {
                 // write every 3rd index

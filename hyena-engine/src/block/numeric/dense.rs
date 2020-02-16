@@ -96,7 +96,7 @@ mod tests {
                     .unwrap();
 
                 let s = [!$T::zero(), $T::zero()];
-                let source = s.into_iter().cycle();
+                let source = s.iter().cycle();
 
                 let len = {
                     let data = block.as_mut_slice_append();
@@ -164,7 +164,7 @@ mod tests {
                 .unwrap();
 
             let s = [!T::zero(), T::zero()];
-            let source = s.into_iter().cycle();
+            let source = s.iter().cycle();
 
             let len = {
                 let data = block.as_mut_slice_append();
@@ -196,7 +196,7 @@ mod tests {
                 .unwrap();
 
             let s = [T::max_value(), T::zero()];
-            let source = s.into_iter().cycle();
+            let source = s.iter().cycle();
 
             let len = {
                 let data = block.as_mut_slice_append();

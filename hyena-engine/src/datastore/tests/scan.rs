@@ -473,7 +473,7 @@ mod full {
                     v.into(),
                     hashmap! {
                         2 => Fragment::from([1_u8, 2, 3, 4]
-                                .into_iter()
+                                .iter()
                                 .cloned()
                                 .cycle()
                                 .take(record_count)

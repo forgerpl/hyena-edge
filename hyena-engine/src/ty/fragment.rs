@@ -321,7 +321,7 @@ impl Fragment {
     }
 }
 
-pub struct FragmentIter<'frag>(Box<Iterator<Item = (usize, Value)> + 'frag>,
+pub struct FragmentIter<'frag>(Box<dyn Iterator<Item = (usize, Value)> + 'frag>,
 PhantomData<&'frag Value>);
 
 impl<'frag> Iterator for FragmentIter<'frag> {

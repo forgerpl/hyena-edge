@@ -90,7 +90,7 @@ where
 }
 
 pub(crate) struct BloomLookupIter<'si> {
-    it: Box<Iterator<Item = bool> + 'si>,
+    it: Box<dyn Iterator<Item = bool> + 'si>,
 }
 
 impl<'si> BloomLookupIter<'si> {
@@ -110,7 +110,7 @@ impl<'si> Iterator for BloomLookupIter<'si> {
 }
 
 pub(crate) struct BloomIter<'si> {
-    it: Box<Iterator<Item = &'si BloomValue> + 'si>,
+    it: Box<dyn Iterator<Item = &'si BloomValue> + 'si>,
 }
 
 impl<'si> BloomIter<'si> {

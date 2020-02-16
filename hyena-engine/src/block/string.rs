@@ -191,7 +191,7 @@ mod tests {
 
         pub(super) fn string_data_gen(payload_len: usize) -> Vec<u8> {
             [b'X', b'x', b'Y']
-                .into_iter()
+                .iter()
                 .cycle()
                 .take(payload_len)
                 .cloned()

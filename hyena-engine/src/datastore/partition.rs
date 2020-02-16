@@ -120,7 +120,7 @@ impl<'part> Partition<'part> {
 
             let mut written: usize = 0;
 
-            for (ref mut block, ref data, mut colidx) in ops {
+            for (ref mut block, ref data, colidx) in ops {
                 let b = acquire!(write block);
                 let mut colidx = colidx.map(|ref mut lock| acquire!(raw write lock));
 
@@ -869,7 +869,7 @@ impl<'part> Partition<'part> {
                 }
 
                 // check for this block's index
-                if let Some(mut index) = partition.indexes.get(&blockid) {
+                if let Some(index) = partition.indexes.get(&blockid) {
                     let index = acquire!(write index);
                     index.set_head(head.head)
                         .with_context(|_|
